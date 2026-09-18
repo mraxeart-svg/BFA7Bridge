@@ -1,0 +1,43 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build unsigned iOS app
+        run: |
+          set -e
+          xcodebuild \
+            -project BFA7Bridge.xcodeproj \
+            -scheme BFA7Bridge \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          set -e
+          rm -rf Payload BFA7Bridge.ipa
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/BFA7Bridge.app Payload/
+          /usr/bin/zip -qry BFA7Bridge.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BFA7Bridge-IPA
+          path: BFA7Bridge.ipa
+          if-no-files-found: error
