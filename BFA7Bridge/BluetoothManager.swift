@@ -8,6 +8,11 @@ final class BluetoothManager: NSObject, ObservableObject {
     @Published private(set) var devices: [BFA7Device] = []
     @Published private(set) var isScanning = false
     @Published private(set) var log: [String] = []
+    @Published private(set) var packetEvents: [BFA7PacketEvent] = []
+    @Published private(set) var experimentRunning = false
+    @Published private(set) var experimentPhase = ""
+    @Published private(set) var experimentSecondsRemaining = 0
+    @Published private(set) var lastExperiment: BFA7ExperimentResult?
     let eventBus = BFA7EventBus()
     @Published private(set) var connectionState = "Не подключено"
     @Published private(set) var serviceCount = 0
@@ -80,10 +85,72 @@ final class BluetoothManager: NSObject, ObservableObject {
     func clearLog() {
         eventBus.clear()
         log.removeAll()
+        packetEvents.removeAll()
     }
 
     func noteCopiedReport() {
         appendLog("Диагностический отчёт скопирован в буфер обмена", kind: .diagnostic)
+    }
+
+    func runExperiment(_ kind: BFA7ExperimentKind) {
+        guard !experimentRunning else { return }
+        guard connectionState == "Подключено" else {
+            appendLog("Эксперимент \(kind.rawValue): сначала подключись к BFA7", kind: .error)
+            return
+        }
+
+        experimentRunning = true
+        experimentPhase = "Базовая линия: ничего не нажимай"
+        experimentSecondsRemaining = 2
+        lastExperiment = nil
+        let startedAt = Date()
+        let baselineStart = startedAt
+
+        Task { @MainActor in
+            for second in stride(from: 2, through: 1, by: -1) {
+                experimentSecondsRemaining = second
+                try? await Task.sleep(for: .seconds(1))
+            }
+
+            let triggerAt = Date()
+            experimentPhase = "НАЖМИ СЕЙЧАС: \(kind.rawValue)"
+            experimentSecondsRemaining = 3
+            appendLog("Эксперимент marker: \(kind.rawValue)", kind: kind == .cameraButton ? .button : .touch)
+
+            for second in stride(from: 3, through: 1, by: -1) {
+                experimentSecondsRemaining = second
+                try? await Task.sleep(for: .seconds(1))
+            }
+
+            let endedAt = Date()
+            let baseline = packetEvents.filter { $0.date >= baselineStart && $0.date < triggerAt }
+            let action = packetEvents.filter { $0.date >= triggerAt && $0.date <= endedAt }
+            let baselineSignatures = Set(baseline.map(\.signature))
+            let baselineByShape = Set(baseline.map { "\($0.characteristicUUID)|\($0.byteCount)|\($0.protocolPrefix)" })
+
+            let candidates = action.filter {
+                !baselineSignatures.contains($0.signature)
+            }
+            let changed = action.filter {
+                let shape = "\($0.characteristicUUID)|\($0.byteCount)|\($0.protocolPrefix)"
+                return baselineByShape.contains(shape) && !baselineSignatures.contains($0.signature)
+            }
+
+            lastExperiment = BFA7ExperimentResult(
+                kind: kind,
+                startedAt: startedAt,
+                triggerAt: triggerAt,
+                endedAt: endedAt,
+                baselineCount: baseline.count,
+                actionCount: action.count,
+                candidatePackets: candidates,
+                changedPackets: changed
+            )
+            experimentRunning = false
+            experimentPhase = "Готово"
+            experimentSecondsRemaining = 0
+            appendLog("Эксперимент завершён: \(candidates.count) кандидатов", kind: .diagnostic)
+        }
     }
 
     var diagnosticReport: String {
@@ -97,6 +164,15 @@ final class BluetoothManager: NSObject, ObservableObject {
         lines.append("Devices:")
         for device in devices {
             lines.append("  \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi) dBm | FE95=\(device.serviceData)")
+        }
+        lines.append("")
+        lines.append("Packet stream:")
+        for packet in packetEvents {
+            lines.append("  \(packet.date.ISO8601Format()) | \(packet.characteristicUUID) | \(packet.byteCount) B | HEX=[\(packet.hex)]")
+        }
+        if let experiment = lastExperiment {
+            lines.append("")
+            lines.append(experiment.report)
         }
         lines.append("")
         lines.append("Events:")
@@ -301,6 +377,10 @@ extension BluetoothManager: CBPeripheralDelegate {
             if let error {
                 appendLog("Value ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)", kind: .error)
             } else if let data {
+                packetEvents.append(BFA7PacketEvent(characteristicUUID: characteristic.uuid.uuidString, data: data))
+                if packetEvents.count > 5000 {
+                    packetEvents.removeFirst(packetEvents.count - 5000)
+                }
                 appendLog("Value ← \(characteristic.uuid.uuidString) \(logValue(data))", kind: .value)
             } else {
                 appendLog("Value ← \(characteristic.uuid.uuidString) EMPTY", kind: .value)
