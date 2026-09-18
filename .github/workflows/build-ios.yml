@@ -37,15 +37,18 @@ jobs:
       - name: Package IPA
         run: |
           set -euo pipefail
+          rm -rf Payload BFA7Bridge.ipa
           mkdir -p Payload
           cp -R "build/Build/Products/Debug-iphoneos/BFA7Bridge.app" Payload/
-          zip -r BFA7Bridge-IPA.zip Payload
+          /usr/bin/zip -r -q BFA7Bridge.ipa Payload
           rm -rf Payload
+          test -f BFA7Bridge.ipa
+          /usr/bin/unzip -l BFA7Bridge.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: BFA7Bridge-IPA
-          path: BFA7Bridge-IPA.zip
+          path: BFA7Bridge.ipa
           if-no-files-found: error
           retention-days: 90
