@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct BFA7Capability: Identifiable, Hashable {
     let id: String
