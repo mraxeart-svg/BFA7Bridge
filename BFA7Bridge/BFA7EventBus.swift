@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum BFA7EventKind: String, Codable {
     case connection
