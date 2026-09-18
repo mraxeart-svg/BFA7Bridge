@@ -12,6 +12,19 @@ final class BluetoothManager: NSObject, ObservableObject {
     @Published private(set) var connectionState = "Не подключено"
     @Published private(set) var serviceCount = 0
     @Published private(set) var notificationCount = 0
+    @Published private(set) var gattServices: [BFA7GATTService] = []
+    @Published private(set) var capabilities: [BFA7Capability] = [
+        .init(id: "ble", title: "Bluetooth LE", status: "Готов"),
+        .init(id: "gatt", title: "GATT", status: "Готов"),
+        .init(id: "rfcomm", title: "RFCOMM / SPP", status: "Лаборатория"),
+        .init(id: "camera", title: "Камера", status: "Будет подключена"),
+        .init(id: "microphone", title: "Микрофон", status: "Будет подключён"),
+        .init(id: "audio", title: "Аудио", status: "Будет подключено"),
+        .init(id: "touch", title: "Touch", status: "Исследование"),
+        .init(id: "button", title: "Кнопка", status: "Исследование"),
+        .init(id: "wifi", title: "Wi‑Fi transfer", status: "Исследование"),
+        .init(id: "files", title: "Файлы / фото", status: "Исследование")
+    ]
 
     private var central: CBCentralManager!
     private var peripherals: [UUID: CBPeripheral] = [:]
@@ -35,6 +48,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         serviceCount = 0
         notificationCount = 0
         subscribedCharacteristics.removeAll()
+        gattServices.removeAll()
         isScanning = true
 
         appendLog("Сканирование BFA7…", kind: .discovery)
@@ -227,6 +241,7 @@ extension BluetoothManager: CBPeripheralDelegate {
             }
 
             serviceCount = services.count
+            gattServices = services.map { BFA7GATTService(id: $0.uuid.uuidString, uuid: $0.uuid.uuidString, characteristics: []) }
             appendLog("GATT: найдено сервисов \(services.count)", kind: .discovery)
 
             for service in services {
@@ -249,6 +264,13 @@ extension BluetoothManager: CBPeripheralDelegate {
 
             appendLog("Service \(service.uuid.uuidString): характеристик \(characteristics.count)", kind: .discovery)
 
+            let discovered = characteristics.map { characteristic in
+                BFA7GATTCharacteristic(id: characteristic.uuid.uuidString, serviceUUID: service.uuid.uuidString, uuid: characteristic.uuid.uuidString, properties: characteristic.properties.description, notifying: characteristic.isNotifying)
+            }
+            if let index = gattServices.firstIndex(where: { $0.uuid == service.uuid.uuidString }) {
+                gattServices[index] = BFA7GATTService(id: service.uuid.uuidString, uuid: service.uuid.uuidString, characteristics: discovered)
+            }
+
             for characteristic in characteristics {
                 let props = characteristic.properties.description
                 appendLog("  \(characteristic.uuid.uuidString) [\(props)]", kind: .discovery)
@@ -264,9 +286,7 @@ extension BluetoothManager: CBPeripheralDelegate {
             if let error {
                 appendLog("Notify ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)", kind: .error)
             } else {
-                if characteristic.isNotifying {
-                    notificationCount += 1
-                }
+                notificationCount = gattServices.flatMap(\.characteristics).filter(\.notifying).count
                 appendLog("Notify state \(characteristic.uuid.uuidString): \(characteristic.isNotifying ? "ON" : "OFF")", kind: .notification)
             }
         }

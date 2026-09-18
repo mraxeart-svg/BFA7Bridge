@@ -10,7 +10,7 @@
 		AA0000000000000000000011 /* BFA7BridgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* BFA7BridgeApp.swift */; };
 		AA0000000000000000000012 /* BluetoothManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000022 /* BluetoothManager.swift */; };
 		AA0000000000000000000013 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000023 /* ContentView.swift */; };
-		AA0000000000000000000015 /* BFA7EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000025 /* BFA7EventBus.swift */; };
+		AA0000000000000000000015 /* BFA7EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000025 /* BFA7EventBus.swift */; };\n\t\tAA0000000000000000000016 /* BFA7LabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000026 /* BFA7LabModels.swift */; };
 		AA0000000000000000000014 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000024 /* Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -20,7 +20,7 @@
 		AA0000000000000000000022 /* BluetoothManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothManager.swift; sourceTree = "<group>"; };
 		AA0000000000000000000023 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AA0000000000000000000025 /* BFA7EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7EventBus.swift; sourceTree = "<group>"; };
+		AA0000000000000000000025 /* BFA7EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7EventBus.swift; sourceTree = "<group>"; };\n\t\tAA0000000000000000000026 /* BFA7LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7LabModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
