@@ -26,6 +26,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build
 
+      - name: Validate app bundle
+        run: |
+          set -e
+          APP="build/Build/Products/Release-iphoneos/BFA7Bridge.app"
+          test -d "$APP"
+          test -f "$APP/BFA7Bridge"
+          test -x "$APP/BFA7Bridge"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist" | grep -Fx "BFA7Bridge"
+          /usr/bin/file "$APP/BFA7Bridge" | grep -E "Mach-O|arm64"
+          echo "App bundle validation passed."
+
       - name: Package IPA
         run: |
           set -e
@@ -34,6 +45,17 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/BFA7Bridge.app Payload/
           /usr/bin/zip -qry BFA7Bridge.ipa Payload
           rm -rf Payload
+
+      - name: Validate IPA
+        run: |
+          set -e
+          rm -rf ipa_check
+          mkdir ipa_check
+          /usr/bin/unzip -q BFA7Bridge.ipa -d ipa_check
+          APP="ipa_check/Payload/BFA7Bridge.app"
+          test -f "$APP/BFA7Bridge"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist" | grep -Fx "BFA7Bridge"
+          echo "IPA validation passed."
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
