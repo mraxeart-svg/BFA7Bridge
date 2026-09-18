@@ -94,7 +94,7 @@ struct ContentView: View {
                         }
 
                         HStack {
-                            Text("Notify/Indicate")
+                            Text("Notify/Indicate ON")
                             Spacer()
                             Text("\(bluetooth.notificationCount)")
                                 .foregroundStyle(.secondary)
@@ -136,6 +136,13 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("BFA7 Bridge")
+            .onChange(of: bluetooth.devices.count) { count in
+                if count > 0 {
+                    withAnimation {
+                        scannerExpanded = false
+                    }
+                }
+            }
         }
     }
 
