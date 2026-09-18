@@ -7,9 +7,13 @@ final class BluetoothManager: NSObject, ObservableObject {
     @Published private(set) var devices: [BFA7Device] = []
     @Published private(set) var isScanning = false
     @Published private(set) var log: [String] = []
+    @Published private(set) var connectionState = "Не подключено"
+    @Published private(set) var serviceCount = 0
+    @Published private(set) var notificationCount = 0
 
     private var central: CBCentralManager!
     private var peripherals: [UUID: CBPeripheral] = [:]
+    private var subscribedCharacteristics: Set<CBUUID> = []
 
     private let miBeaconService = CBUUID(string: "FE95")
 
@@ -23,9 +27,14 @@ final class BluetoothManager: NSObject, ObservableObject {
             appendLog("Bluetooth недоступен: \(stateDescription)")
             return
         }
+
         devices.removeAll()
         peripherals.removeAll()
+        serviceCount = 0
+        notificationCount = 0
+        subscribedCharacteristics.removeAll()
         isScanning = true
+
         appendLog("Сканирование BFA7…")
         central.scanForPeripherals(
             withServices: nil,
@@ -40,16 +49,78 @@ final class BluetoothManager: NSObject, ObservableObject {
     }
 
     func connect(_ device: BFA7Device) {
-        guard let peripheral = peripherals[device.id] else { return }
+        guard let peripheral = peripherals[device.id] else {
+            appendLog("BFA7: периферия не найдена в кеше")
+            return
+        }
+
         stopScan()
+        connectionState = "Подключение…"
         appendLog("Подключение к \(device.name)…")
         peripheral.delegate = self
         central.connect(peripheral, options: nil)
     }
 
+    func clearLog() {
+        log.removeAll()
+    }
+
+    func noteCopiedReport() {
+        appendLog("Диагностический отчёт скопирован в буфер обмена")
+    }
+
+    var diagnosticReport: String {
+        var lines: [String] = []
+        lines.append("BFA7 Bridge diagnostic report")
+        lines.append("Generated: \(Self.timestamp())")
+        lines.append("Bluetooth: \(stateDescription)")
+        lines.append("Connection: \(connectionState)")
+        lines.append("Services: \(serviceCount)")
+        lines.append("Notify/Indicate: \(notificationCount)")
+        lines.append("Devices:")
+        for device in devices {
+            lines.append("  \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi) dBm | FE95=\(device.serviceData)")
+        }
+        lines.append("")
+        lines.append("Events:")
+        lines.append(contentsOf: log.reversed())
+        return lines.joined(separator: "\n")
+    }
+
     private func appendLog(_ value: String) {
-        log.insert(value, at: 0)
-        if log.count > 100 { log.removeLast() }
+        log.insert("\(Self.timestamp())  \(value)", at: 0)
+        if log.count > 500 {
+            log.removeLast(log.count - 500)
+        }
+    }
+
+    private func logValue(_ data: Data) -> String {
+        let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        let ascii = String(data: data, encoding: .utf8)?
+            .map { $0.isASCII && !$0.isNewline ? String($0) : "." }
+            ?? ""
+        return "HEX=[\(hex)] ASCII="\(ascii)""
+    }
+
+    private func subscribeIfSupported(_ characteristic: CBCharacteristic, peripheral: CBPeripheral) {
+        let properties = characteristic.properties
+
+        if properties.contains(.notify) || properties.contains(.indicate) {
+            peripheral.setNotifyValue(true, for: characteristic)
+            notificationCount += 1
+            appendLog("Subscribe → \(characteristic.uuid.uuidString) [\(properties.description)]")
+        }
+
+        if properties.contains(.read) {
+            peripheral.readValue(for: characteristic)
+            appendLog("Read → \(characteristic.uuid.uuidString)")
+        }
+    }
+
+    private static func timestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: Date())
     }
 
     private var stateDescription: String {
@@ -92,8 +163,6 @@ extension BluetoothManager: CBCentralManagerDelegate {
         let hasFE95 = serviceUUIDs.contains { $0 == miBeaconService }
         let fe95Data = serviceData.first(where: { $0.key == miBeaconService })?.value
 
-        // BFA7 currently advertises Xiaomi's FE95 service data. We also accept
-        // Xiaomi-looking names, but do not write anything to the device yet.
         let looksLikeBFA7 = hasFE95
             || name.localizedCaseInsensitiveContains("BFA7")
             || name.localizedCaseInsensitiveContains("Xiaomi AI Glasses")
@@ -109,15 +178,18 @@ extension BluetoothManager: CBCentralManagerDelegate {
         )
 
         peripherals[peripheral.identifier] = peripheral
+
         if let index = devices.firstIndex(where: { $0.id == device.id }) {
             devices[index] = device
         } else {
             devices.append(device)
+            appendLog("BFA7 найден: RSSI=\(RSSI.intValue) dBm, FE95=[\(hex)]")
         }
     }
 
     func centralManager(_ central: CBCentralManager,
                         didConnect peripheral: CBPeripheral) {
+        connectionState = "Подключено"
         appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)")
         peripheral.delegate = self
         peripheral.discoverServices(nil)
@@ -126,12 +198,14 @@ extension BluetoothManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral,
                         error: Error?) {
+        connectionState = "Ошибка подключения"
         appendLog("Ошибка подключения: \(error?.localizedDescription ?? "unknown")")
     }
 
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        connectionState = "Отключено"
         appendLog("Отключено: \(error?.localizedDescription ?? "без ошибки")")
     }
 }
@@ -140,15 +214,19 @@ extension BluetoothManager: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral,
                                  didDiscoverServices error: Error?) {
         let services = peripheral.services ?? []
+
         Task { @MainActor in
             if let error {
                 appendLog("GATT ошибка: \(error.localizedDescription)")
-            } else {
-                appendLog("GATT: найдено сервисов \(services.count)")
-                for service in services {
-                    appendLog("Service: \(service.uuid.uuidString)")
-                    peripheral.discoverCharacteristics(nil, for: service)
-                }
+                return
+            }
+
+            serviceCount = services.count
+            appendLog("GATT: найдено сервисов \(services.count)")
+
+            for service in services {
+                appendLog("Service: \(service.uuid.uuidString)")
+                peripheral.discoverCharacteristics(nil, for: service)
             }
         }
     }
@@ -157,15 +235,47 @@ extension BluetoothManager: CBPeripheralDelegate {
                                  didDiscoverCharacteristicsFor service: CBService,
                                  error: Error?) {
         let characteristics = service.characteristics ?? []
+
         Task { @MainActor in
             if let error {
                 appendLog("Characteristics ошибка: \(error.localizedDescription)")
+                return
+            }
+
+            appendLog("Service \(service.uuid.uuidString): характеристик \(characteristics.count)")
+
+            for characteristic in characteristics {
+                let props = characteristic.properties.description
+                appendLog("  \(characteristic.uuid.uuidString) [\(props)]")
+                subscribeIfSupported(characteristic, peripheral: peripheral)
+            }
+        }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral,
+                                 didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                                 error: Error?) {
+        Task { @MainActor in
+            if let error {
+                appendLog("Notify ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)")
             } else {
-                appendLog("Service \(service.uuid.uuidString): характеристик \(characteristics.count)")
-                for characteristic in characteristics {
-                    let props = characteristic.properties.description
-                    appendLog("  \(characteristic.uuid.uuidString) [\(props)]")
-                }
+                appendLog("Notify state \(characteristic.uuid.uuidString): \(characteristic.isNotifying ? "ON" : "OFF")")
+            }
+        }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral,
+                                 didUpdateValueFor characteristic: CBCharacteristic,
+                                 error: Error?) {
+        let data = characteristic.value
+
+        Task { @MainActor in
+            if let error {
+                appendLog("Value ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)")
+            } else if let data {
+                appendLog("Value ← \(characteristic.uuid.uuidString) \(logValue(data))")
+            } else {
+                appendLog("Value ← \(characteristic.uuid.uuidString) EMPTY")
             }
         }
     }
