@@ -15,7 +15,7 @@ final class BluetoothManager: NSObject, ObservableObject {
 
     private var central: CBCentralManager!
     private var peripherals: [UUID: CBPeripheral] = [:]
-    private var subscribedCharacteristics: Set<CBUUID> = []
+    private var subscribedCharacteristics: Set<String> = []
 
     private let miBeaconService = CBUUID(string: "FE95")
 
@@ -52,7 +52,7 @@ final class BluetoothManager: NSObject, ObservableObject {
 
     func connect(_ device: BFA7Device) {
         guard let peripheral = peripherals[device.id] else {
-            appendLog("BFA7: периферия не найдена в кеше")
+            appendLog("BFA7: периферия не найдена в кеше", kind: .error)
             return
         }
 
@@ -69,7 +69,7 @@ final class BluetoothManager: NSObject, ObservableObject {
     }
 
     func noteCopiedReport() {
-        appendLog("Диагностический отчёт скопирован в буфер обмена")
+        appendLog("Диагностический отчёт скопирован в буфер обмена", kind: .diagnostic)
     }
 
     var diagnosticReport: String {
@@ -79,7 +79,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         lines.append("Bluetooth: \(stateDescription)")
         lines.append("Connection: \(connectionState)")
         lines.append("Services: \(serviceCount)")
-        lines.append("Notify/Indicate: \(notificationCount)")
+        lines.append("Notify/Indicate enabled: \(notificationCount)")
         lines.append("Devices:")
         for device in devices {
             lines.append("  \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi) dBm | FE95=\(device.serviceData)")
@@ -90,33 +90,33 @@ final class BluetoothManager: NSObject, ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func appendLog(_ value: String) {
-        log.insert("\(Self.timestamp())  \(value)", at: 0)
-        if log.count > 500 {
-            log.removeLast(log.count - 500)
-        }
+    private func appendLog(_ value: String, kind: BFA7EventKind = .diagnostic, detail: String = "") {
+        eventBus.publish(kind: kind, title: value, detail: detail)
+        log = eventBus.events.reversed().map(\.line)
     }
 
     private func logValue(_ data: Data) -> String {
         let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
-        let ascii = String(data: data, encoding: .utf8)?
-            .map { $0.isASCII && !$0.isNewline ? String($0) : "." }
-            ?? ""
-        return "HEX=[\(hex)] ASCII="\(ascii)""
+        let ascii = data.map { byte -> String in
+            let value = Int(byte)
+            return (32...126).contains(value) ? String(UnicodeScalar(value)!) : "."
+        }.joined()
+        return "HEX=[\(hex)] ASCII=\"\(ascii)\""
     }
 
     private func subscribeIfSupported(_ characteristic: CBCharacteristic, peripheral: CBPeripheral) {
         let properties = characteristic.properties
+        let key = "\(peripheral.identifier.uuidString)/\(characteristic.service?.uuid.uuidString ?? "?")/\(characteristic.uuid.uuidString)"
 
-        if properties.contains(.notify) || properties.contains(.indicate) {
+        if properties.contains(.notify) || properties.contains(.indicate), !subscribedCharacteristics.contains(key) {
+            subscribedCharacteristics.insert(key)
             peripheral.setNotifyValue(true, for: characteristic)
-            notificationCount += 1
-            appendLog("Subscribe → \(characteristic.uuid.uuidString) [\(properties.description)]")
+            appendLog("Subscribe → \(characteristic.uuid.uuidString) [\(properties.description)]", kind: .notification)
         }
 
         if properties.contains(.read) {
             peripheral.readValue(for: characteristic)
-            appendLog("Read → \(characteristic.uuid.uuidString)")
+            appendLog("Read → \(characteristic.uuid.uuidString)", kind: .value)
         }
     }
 
@@ -209,6 +209,8 @@ extension BluetoothManager: CBCentralManagerDelegate {
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         connectionState = "Отключено"
+        notificationCount = 0
+        subscribedCharacteristics.removeAll()
         appendLog("Отключено: \(error?.localizedDescription ?? "без ошибки")", kind: .connection)
     }
 }
@@ -262,6 +264,9 @@ extension BluetoothManager: CBPeripheralDelegate {
             if let error {
                 appendLog("Notify ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)", kind: .error)
             } else {
+                if characteristic.isNotifying {
+                    notificationCount += 1
+                }
                 appendLog("Notify state \(characteristic.uuid.uuidString): \(characteristic.isNotifying ? "ON" : "OFF")", kind: .notification)
             }
         }
