@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -75,8 +75,6 @@
 			dependencies = (
 			);
 			name = BFA7Bridge;
-			packageProductDependencies = (
-			);
 			productName = BFA7Bridge;
 			productReference = AA0000000000000000000020 /* BFA7Bridge.app */;
 			productType = "com.apple.product-type.application";
@@ -88,10 +86,10 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 1540;
 			};
 			buildConfigurationList = AA0000000000000000000070 /* Build configuration list for PBXProject "BFA7Bridge" */;
-			compatibilityVersion = "Xcode 16.0";
+			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
