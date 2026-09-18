@@ -51,6 +51,7 @@
 				AA0000000000000000000022 /* BluetoothManager.swift */,
 				AA0000000000000000000023 /* ContentView.swift */,
 				AA0000000000000000000025 /* BFA7EventBus.swift */,
+				AA0000000000000000000026 /* BFA7LabModels.swift */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
 			path = BFA7Bridge;
@@ -130,6 +131,7 @@
 				AA0000000000000000000012 /* BluetoothManager.swift in Sources */,
 				AA0000000000000000000013 /* ContentView.swift in Sources */,
 				AA0000000000000000000015 /* BFA7EventBus.swift in Sources */,
+				AA0000000000000000000016 /* BFA7LabModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
