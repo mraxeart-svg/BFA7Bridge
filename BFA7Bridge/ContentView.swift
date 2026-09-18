@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var scannerExpanded = true
     @State private var gattExpanded = false
     @State private var capabilitiesExpanded = false
+    @State private var experimentExpanded = true
     @State private var sessionStartedAt: Date?
 
     var body: some View {
@@ -106,6 +107,76 @@ struct ContentView: View {
                     }
                 }
 
+                Section("Экспериментальная лаборатория") {
+                    DisclosureGroup("Кнопка / Touch correlation", isExpanded: $experimentExpanded) {
+                        Text("Безопасный пассивный тест: приложение только слушает GATT-уведомления. Никаких raw write или команд очкам не отправляется.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("2 сек — базовая линия. Затем появится «НАЖМИ СЕЙЧАС». Нажми физический элемент очков один раз, после чего ещё 3 сек идёт запись.")
+                            .font(.caption)
+
+                        HStack {
+                            Button("Кнопка камеры") {
+                                bluetooth.runExperiment(.cameraButton)
+                            }
+                            .disabled(bluetooth.experimentRunning)
+
+                            Button("Touch") {
+                                bluetooth.runExperiment(.touch)
+                            }
+                            .disabled(bluetooth.experimentRunning)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        if bluetooth.experimentRunning {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(bluetooth.experimentPhase).bold()
+                                Text("\(bluetooth.experimentSecondsRemaining) сек")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if bluetooth.experimentPhase == "Готово" {
+                            Label("Эксперимент завершён", systemImage: "checkmark.circle")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let result = bluetooth.lastExperiment {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(result.kind.rawValue).font(.headline)
+                                Text("База: \(result.baselineCount) • окно действия: \(result.actionCount)")
+                                    .font(.caption)
+                                Text("Кандидаты: \(result.candidatePackets.count) • изменённых: \(result.changedPackets.count)")
+                                    .font(.caption)
+
+                                if !result.candidatePackets.isEmpty {
+                                    DisclosureGroup("Кандидатные пакеты") {
+                                        ForEach(result.candidatePackets.prefix(20)) { packet in
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("\(packet.characteristicUUID) • \(packet.byteCount) B")
+                                                    .font(.caption2.monospaced())
+                                                Text(packet.hex)
+                                                    .font(.caption2.monospaced())
+                                                    .textSelection(.enabled)
+                                            }
+                                            .padding(.vertical, 2)
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    UIPasteboard.general.string = result.report
+                                    bluetooth.noteCopiedReport()
+                                } label: {
+                                    Label("Скопировать результат эксперимента", systemImage: "doc.on.clipboard")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Section("Возможности") {
                     DisclosureGroup("Архитектура BFA7 Bridge", isExpanded: $capabilitiesExpanded) {
                         ForEach(bluetooth.capabilities) { capability in
@@ -161,6 +232,12 @@ struct ContentView: View {
                         Label("События", systemImage: "waveform.path.ecg")
                         Spacer()
                         Text("\(bluetooth.log.count)").foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Label("Пакеты GATT", systemImage: "dot.radiowaves.left.and.right")
+                        Spacer()
+                        Text("\(bluetooth.packetEvents.count)").foregroundStyle(.secondary)
                     }
 
                     Button {
