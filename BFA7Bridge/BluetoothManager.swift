@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import Combine
 
 @MainActor
 final class BluetoothManager: NSObject, ObservableObject {
@@ -7,6 +8,7 @@ final class BluetoothManager: NSObject, ObservableObject {
     @Published private(set) var devices: [BFA7Device] = []
     @Published private(set) var isScanning = false
     @Published private(set) var log: [String] = []
+    let eventBus = BFA7EventBus()
     @Published private(set) var connectionState = "Не подключено"
     @Published private(set) var serviceCount = 0
     @Published private(set) var notificationCount = 0
@@ -35,7 +37,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         subscribedCharacteristics.removeAll()
         isScanning = true
 
-        appendLog("Сканирование BFA7…")
+        appendLog("Сканирование BFA7…", kind: .discovery)
         central.scanForPeripherals(
             withServices: nil,
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
@@ -45,7 +47,7 @@ final class BluetoothManager: NSObject, ObservableObject {
     func stopScan() {
         central.stopScan()
         isScanning = false
-        appendLog("Сканирование остановлено")
+        appendLog("Сканирование остановлено", kind: .discovery)
     }
 
     func connect(_ device: BFA7Device) {
@@ -56,12 +58,13 @@ final class BluetoothManager: NSObject, ObservableObject {
 
         stopScan()
         connectionState = "Подключение…"
-        appendLog("Подключение к \(device.name)…")
+        appendLog("Подключение к \(device.name)…", kind: .connection)
         peripheral.delegate = self
         central.connect(peripheral, options: nil)
     }
 
     func clearLog() {
+        eventBus.clear()
         log.removeAll()
     }
 
@@ -83,7 +86,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         }
         lines.append("")
         lines.append("Events:")
-        lines.append(contentsOf: log.reversed())
+        lines.append(eventBus.report)
         return lines.joined(separator: "\n")
     }
 
@@ -146,7 +149,7 @@ struct BFA7Device: Identifiable, Hashable {
 extension BluetoothManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         state = central.state
-        appendLog("Bluetooth: \(stateDescription)")
+        appendLog("Bluetooth: \(stateDescription)", kind: .connection)
     }
 
     func centralManager(_ central: CBCentralManager,
@@ -183,14 +186,14 @@ extension BluetoothManager: CBCentralManagerDelegate {
             devices[index] = device
         } else {
             devices.append(device)
-            appendLog("BFA7 найден: RSSI=\(RSSI.intValue) dBm, FE95=[\(hex)]")
+            appendLog("BFA7 найден: RSSI=\(RSSI.intValue) dBm, FE95=[\(hex)]", kind: .discovery)
         }
     }
 
     func centralManager(_ central: CBCentralManager,
                         didConnect peripheral: CBPeripheral) {
         connectionState = "Подключено"
-        appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)")
+        appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)", kind: .connection)
         peripheral.delegate = self
         peripheral.discoverServices(nil)
     }
@@ -199,14 +202,14 @@ extension BluetoothManager: CBCentralManagerDelegate {
                         didFailToConnect peripheral: CBPeripheral,
                         error: Error?) {
         connectionState = "Ошибка подключения"
-        appendLog("Ошибка подключения: \(error?.localizedDescription ?? "unknown")")
+        appendLog("Ошибка подключения: \(error?.localizedDescription ?? "unknown")", kind: .error)
     }
 
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         connectionState = "Отключено"
-        appendLog("Отключено: \(error?.localizedDescription ?? "без ошибки")")
+        appendLog("Отключено: \(error?.localizedDescription ?? "без ошибки")", kind: .connection)
     }
 }
 
@@ -217,15 +220,15 @@ extension BluetoothManager: CBPeripheralDelegate {
 
         Task { @MainActor in
             if let error {
-                appendLog("GATT ошибка: \(error.localizedDescription)")
+                appendLog("GATT ошибка: \(error.localizedDescription)", kind: .error)
                 return
             }
 
             serviceCount = services.count
-            appendLog("GATT: найдено сервисов \(services.count)")
+            appendLog("GATT: найдено сервисов \(services.count)", kind: .discovery)
 
             for service in services {
-                appendLog("Service: \(service.uuid.uuidString)")
+                appendLog("Service: \(service.uuid.uuidString)", kind: .discovery)
                 peripheral.discoverCharacteristics(nil, for: service)
             }
         }
@@ -238,15 +241,15 @@ extension BluetoothManager: CBPeripheralDelegate {
 
         Task { @MainActor in
             if let error {
-                appendLog("Characteristics ошибка: \(error.localizedDescription)")
+                appendLog("Characteristics ошибка: \(error.localizedDescription)", kind: .error)
                 return
             }
 
-            appendLog("Service \(service.uuid.uuidString): характеристик \(characteristics.count)")
+            appendLog("Service \(service.uuid.uuidString): характеристик \(characteristics.count)", kind: .discovery)
 
             for characteristic in characteristics {
                 let props = characteristic.properties.description
-                appendLog("  \(characteristic.uuid.uuidString) [\(props)]")
+                appendLog("  \(characteristic.uuid.uuidString) [\(props)]", kind: .discovery)
                 subscribeIfSupported(characteristic, peripheral: peripheral)
             }
         }
@@ -257,9 +260,9 @@ extension BluetoothManager: CBPeripheralDelegate {
                                  error: Error?) {
         Task { @MainActor in
             if let error {
-                appendLog("Notify ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)")
+                appendLog("Notify ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)", kind: .error)
             } else {
-                appendLog("Notify state \(characteristic.uuid.uuidString): \(characteristic.isNotifying ? "ON" : "OFF")")
+                appendLog("Notify state \(characteristic.uuid.uuidString): \(characteristic.isNotifying ? "ON" : "OFF")", kind: .notification)
             }
         }
     }
@@ -271,11 +274,11 @@ extension BluetoothManager: CBPeripheralDelegate {
 
         Task { @MainActor in
             if let error {
-                appendLog("Value ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)")
+                appendLog("Value ERROR \(characteristic.uuid.uuidString): \(error.localizedDescription)", kind: .error)
             } else if let data {
-                appendLog("Value ← \(characteristic.uuid.uuidString) \(logValue(data))")
+                appendLog("Value ← \(characteristic.uuid.uuidString) \(logValue(data))", kind: .value)
             } else {
-                appendLog("Value ← \(characteristic.uuid.uuidString) EMPTY")
+                appendLog("Value ← \(characteristic.uuid.uuidString) EMPTY", kind: .value)
             }
         }
     }
