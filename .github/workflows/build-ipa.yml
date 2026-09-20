@@ -15,6 +15,7 @@ jobs:
       - name: Build unsigned iOS app
         run: |
           set -e
+          set -o pipefail
           xcodebuild \
             -project BFA7Bridge.xcodeproj \
             -scheme BFA7Bridge \
@@ -24,7 +25,22 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            build
+            build 2>&1 | tee xcodebuild.log
+
+      - name: Report xcodebuild failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          log = Path('xcodebuild.log')
+          if not log.exists():
+              print('::error title=xcodebuild failed::xcodebuild.log was not created')
+              raise SystemExit(0)
+          lines = log.read_text(errors='replace').splitlines()[-120:]
+          text = '\n'.join(lines)
+          escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=xcodebuild failed::{escaped}')
+          PY
 
       - name: Validate app bundle
         run: |
