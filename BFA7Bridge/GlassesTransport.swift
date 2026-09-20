@@ -310,29 +310,38 @@ extension GlassesTransport: CBCentralManagerDelegate {
         }
     }
 
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        currentPeripheral = peripheral
-        connectionState = "Подключено"
-        appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)", kind: .connection)
-        peripheral.delegate = self
-        peripheral.discoverServices(nil)
-    }
-
-    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        connectionState = "Ошибка подключения"
-        appendLog("Ошибка подключения: \(error?.localizedDescription ?? "unknown")", kind: .error)
-    }
-
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        if currentPeripheral?.identifier == peripheral.identifier {
-            currentPeripheral = nil
+    nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        Task { @MainActor in
+            currentPeripheral = peripheral
+            connectionState = "Подключено"
+            appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)", kind: .connection)
+            peripheral.delegate = self
+            peripheral.discoverServices(nil)
         }
-        connectionState = "Отключено"
-        notificationCount = 0
-        writableCharacteristics.removeAll()
-        writableCharacteristicRefs.removeAll()
-        subscribedCharacteristics.removeAll()
-        appendLog("Отключено: \(error?.localizedDescription ?? "без ошибки")", kind: .connection)
+    }
+
+    nonisolated func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        let message = error?.localizedDescription ?? "unknown"
+        Task { @MainActor in
+            connectionState = "Ошибка подключения"
+            appendLog("Ошибка подключения: \(message)", kind: .error)
+        }
+    }
+
+    nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        let peripheralID = peripheral.identifier
+        let message = error?.localizedDescription ?? "без ошибки"
+        Task { @MainActor in
+            if currentPeripheral?.identifier == peripheralID {
+                currentPeripheral = nil
+            }
+            connectionState = "Отключено"
+            notificationCount = 0
+            writableCharacteristics.removeAll()
+            writableCharacteristicRefs.removeAll()
+            subscribedCharacteristics.removeAll()
+            appendLog("Отключено: \(message)", kind: .connection)
+        }
     }
 }
 

@@ -49,6 +49,11 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
     }
 }
 
+private struct BFA7PacketSizeCount {
+    let size: Int
+    let count: Int
+}
+
 struct BFA7TimelineEntry: Identifiable, Hashable {
     let id = UUID()
     let relativeSeconds: TimeInterval
@@ -99,14 +104,23 @@ final class ProtocolLab: ObservableObject {
 
     var packetStats: String {
         let filtered = filteredPackets
-        let a5 = filtered.filter(\.looksLikeA5Frame).count
-        let sizes = Dictionary(grouping: filtered, by: \.byteCount)
-            .map { (size: $0.key, count: $0.value.count) }
-            .sorted { lhs, rhs in lhs.count == rhs.count ? lhs.size < rhs.size : lhs.count > rhs.count }
-            .prefix(8)
-            .map { "\($0.size)B x\($0.count)" }
-            .joined(separator: ", ")
-        return "packets=\(filtered.count), A5=\(a5), sizes=[\(sizes)]"
+        let a5 = filtered.filter { $0.looksLikeA5Frame }.count
+        let grouped = Dictionary(grouping: filtered) { packet in
+            packet.byteCount
+        }
+        let sizeCounts = grouped.map { key, value in
+            BFA7PacketSizeCount(size: key, count: value.count)
+        }
+        let sortedSizeCounts = sizeCounts.sorted { lhs, rhs in
+            if lhs.count == rhs.count {
+                return lhs.size < rhs.size
+            }
+            return lhs.count > rhs.count
+        }
+        let sizeSummary = sortedSizeCounts.prefix(8).map { item in
+            "\(item.size)B x\(item.count)"
+        }.joined(separator: ", ")
+        return "packets=\(filtered.count), A5=\(a5), sizes=[\(sizeSummary)]"
     }
 
     var jsonExport: String {
