@@ -7,6 +7,13 @@ struct BFA7Capability: Identifiable, Hashable {
     let status: String
 }
 
+struct BFA7Device: Identifiable, Hashable {
+    let id: UUID
+    let name: String
+    let rssi: Int
+    let serviceData: String
+}
+
 struct BFA7GATTCharacteristic: Identifiable, Hashable {
     let id: String
     let serviceUUID: String
@@ -26,6 +33,76 @@ struct BFA7Session: Identifiable, Codable {
     let startedAt: Date
     let endedAt: Date
     let eventCount: Int
+}
+
+struct BFA7MediaFile: Identifiable, Hashable, Codable {
+    let id: String
+    let filename: String
+    let kind: BFA7MediaKind
+    let sizeBytes: Int?
+    let createdAt: Date?
+    let remotePath: String?
+    var localURL: URL?
+
+    var displaySize: String {
+        guard let sizeBytes else { return "size unknown" }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(sizeBytes))
+    }
+}
+
+enum BFA7MediaKind: String, Codable {
+    case photo
+    case video
+    case audio
+    case unknown
+
+    init(filename: String) {
+        let lowercased = filename.lowercased()
+        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".png") {
+            self = .photo
+        } else if lowercased.hasSuffix(".mp4") || lowercased.hasSuffix(".mov") {
+            self = .video
+        } else if lowercased.hasSuffix(".m4a") || lowercased.hasSuffix(".wav") || lowercased.hasSuffix(".aac") {
+            self = .audio
+        } else {
+            self = .unknown
+        }
+    }
+}
+
+struct BFA7AskPayload: Identifiable, Hashable {
+    let id = UUID()
+    let command: String
+    let media: BFA7MediaFile?
+    let createdAt: Date
+
+    var promptText: String {
+        var lines = [
+            "BFA7 Bridge request",
+            "Command: \(command)"
+        ]
+        if let media {
+            lines.append("Media: \(media.filename)")
+            if let localURL = media.localURL {
+                lines.append("Local file: \(localURL.lastPathComponent)")
+            }
+        } else {
+            lines.append("Media: none")
+        }
+        lines.append("Answer briefly in Russian and describe what is visible if an image/video frame is attached.")
+        return lines.joined(separator: "\n")
+    }
+}
+
+enum BFA7AIProviderState: Equatable {
+    case idle
+    case preparing
+    case ready(String)
+    case blocked(String)
+    case failed(String)
 }
 
 @MainActor

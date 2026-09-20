@@ -2,34 +2,51 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @EnvironmentObject private var bluetooth: BluetoothManager
+    var body: some View {
+        TabView {
+            DeviceView()
+                .tabItem { Label("Device", systemImage: "eyeglasses") }
+            CaptureView()
+                .tabItem { Label("Capture", systemImage: "photo.on.rectangle") }
+            AskView()
+                .tabItem { Label("Ask", systemImage: "mic.badge.plus") }
+            LabView()
+                .tabItem { Label("Lab", systemImage: "waveform.path.ecg.rectangle") }
+        }
+    }
+}
+
+private struct DeviceView: View {
+    @EnvironmentObject private var glasses: GlassesTransport
     @EnvironmentObject private var sessions: BFA7SessionStore
     @State private var scannerExpanded = true
     @State private var gattExpanded = false
     @State private var capabilitiesExpanded = false
     @State private var sessionStartedAt: Date?
+    @State private var hexCommand = ""
+    @State private var rawWriteEnabled = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                Section("Bluetooth") {
                     HStack {
                         Text("Состояние")
                         Spacer()
                         Text(bluetoothState).foregroundStyle(.secondary)
                     }
 
-                    Button(bluetooth.isScanning ? "Остановить сканирование" : "Найти BFA7") {
-                        if bluetooth.isScanning {
-                            bluetooth.stopScan()
+                    Button(glasses.isScanning ? "Остановить сканирование" : "Найти BFA7") {
+                        if glasses.isScanning {
+                            glasses.stopScan()
                         } else {
                             scannerExpanded = true
-                            bluetooth.startScan()
+                            glasses.startScan()
                         }
                     }
-                    .disabled(bluetooth.state != .poweredOn)
+                    .disabled(glasses.state != .poweredOn)
 
-                    if !bluetooth.devices.isEmpty {
+                    if !glasses.devices.isEmpty {
                         Button {
                             withAnimation { scannerExpanded.toggle() }
                         } label: {
@@ -37,18 +54,16 @@ struct ContentView: View {
                                   systemImage: scannerExpanded ? "chevron.up" : "chevron.down")
                         }
                     }
-                } header: {
-                    Text("Bluetooth")
                 }
 
                 if scannerExpanded {
                     Section("BFA7") {
-                        if bluetooth.devices.isEmpty {
-                            Text("BFA7 пока не найден. Нажми «Найти BFA7».")
+                        if glasses.devices.isEmpty {
+                            Text("BFA7 пока не найден")
                                 .foregroundStyle(.secondary)
                         }
 
-                        ForEach(bluetooth.devices) { device in
+                        ForEach(glasses.devices) { device in
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Text(device.name).font(.headline)
@@ -58,7 +73,7 @@ struct ContentView: View {
                                 Text(device.id.uuidString).font(.caption2).foregroundStyle(.secondary)
                                 Text("FE95: \(device.serviceData)").font(.caption2).foregroundStyle(.secondary)
                                 Button("Подключиться и прочитать GATT") {
-                                    bluetooth.connect(device)
+                                    glasses.connect(device)
                                 }
                             }
                             .padding(.vertical, 4)
@@ -67,28 +82,18 @@ struct ContentView: View {
                 }
 
                 Section("Подключение") {
-                    HStack {
-                        Text("Состояние")
-                        Spacer()
-                        Text(bluetooth.connectionState).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("GATT-сервисов")
-                        Spacer()
-                        Text("\(bluetooth.serviceCount)").foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Notify/Indicate ON")
-                        Spacer()
-                        Text("\(bluetooth.notificationCount)").foregroundStyle(.secondary)
-                    }
+                    statusRow("Состояние", glasses.connectionState)
+                    statusRow("GATT-сервисов", "\(glasses.serviceCount)")
+                    statusRow("Notify/Indicate ON", "\(glasses.notificationCount)")
+                    statusRow("Writable", "\(glasses.writableCharacteristics.count)")
+                    statusRow("Последняя кнопка", glasses.lastButtonEvent)
 
                     DisclosureGroup("GATT Explorer", isExpanded: $gattExpanded) {
-                        if bluetooth.gattServices.isEmpty {
-                            Text("Подключись к BFA7 для заполнения.")
+                        if glasses.gattServices.isEmpty {
+                            Text("Подключись к BFA7")
                                 .foregroundStyle(.secondary)
                         }
-                        ForEach(bluetooth.gattServices) { service in
+                        ForEach(glasses.gattServices) { service in
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(service.uuid).font(.caption).bold()
                                 ForEach(service.characteristics) { characteristic in
@@ -106,16 +111,36 @@ struct ContentView: View {
                     }
                 }
 
+                Section("Button Experiment") {
+                    statusRow("Состояние", glasses.buttonExperimentState)
+                    Button("Start baseline") {
+                        glasses.startButtonExperiment()
+                    }
+                    Button("Mark physical button") {
+                        glasses.markPhysicalButtonPress()
+                    }
+                    .disabled(glasses.buttonExperimentStartedAt == nil)
+                    Button("Copy experiment report") {
+                        UIPasteboard.general.string = glasses.finishButtonExperiment()
+                    }
+                    .disabled(glasses.buttonExperimentStartedAt == nil)
+                }
+
+                Section("Raw write") {
+                    Toggle("Enable HEX write", isOn: $rawWriteEnabled)
+                    TextField("HEX bytes", text: $hexCommand)
+                        .textInputAutocapitalization(.characters)
+                        .font(.body.monospaced())
+                    Button("Write HEX") {
+                        glasses.writeHexCommand(hexCommand)
+                    }
+                    .disabled(!rawWriteEnabled || hexCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
                 Section("Возможности") {
-                    DisclosureGroup("Архитектура BFA7 Bridge", isExpanded: $capabilitiesExpanded) {
-                        ForEach(bluetooth.capabilities) { capability in
-                            HStack {
-                                Text(capability.title)
-                                Spacer()
-                                Text(capability.status)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    DisclosureGroup("BFA7 Bridge", isExpanded: $capabilitiesExpanded) {
+                        ForEach(glasses.capabilities) { capability in
+                            statusRow(capability.title, capability.status)
                         }
                     }
                 }
@@ -124,7 +149,7 @@ struct ContentView: View {
                     if sessionStartedAt == nil {
                         Button {
                             sessionStartedAt = Date()
-                            bluetooth.clearLog()
+                            glasses.clearLog()
                         } label: {
                             Label("Начать новую сессию", systemImage: "record.circle")
                         }
@@ -132,7 +157,7 @@ struct ContentView: View {
                         Button {
                             let end = Date()
                             if let start = sessionStartedAt {
-                                sessions.save(BFA7Session(id: UUID(), startedAt: start, endedAt: end, eventCount: bluetooth.log.count))
+                                sessions.save(BFA7Session(id: UUID(), startedAt: start, endedAt: end, eventCount: glasses.log.count))
                             }
                             sessionStartedAt = nil
                         } label: {
@@ -144,52 +169,20 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if !sessions.sessions.isEmpty {
-                        ForEach(sessions.sessions.prefix(5)) { session in
-                            VStack(alignment: .leading) {
-                                Text(session.startedAt.formatted(date: .abbreviated, time: .standard))
-                                Text("\(session.eventCount) событий")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
+                    ForEach(sessions.sessions.prefix(5)) { session in
+                        VStack(alignment: .leading) {
+                            Text(session.startedAt.formatted(date: .abbreviated, time: .standard))
+                            Text("\(session.eventCount) событий")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                Section("Диагностика") {
-                    HStack {
-                        Label("События", systemImage: "waveform.path.ecg")
-                        Spacer()
-                        Text("\(bluetooth.log.count)").foregroundStyle(.secondary)
-                    }
-
-                    Button {
-                        UIPasteboard.general.string = bluetooth.diagnosticReport
-                        bluetooth.noteCopiedReport()
-                    } label: {
-                        Label("Скопировать всё в буфер", systemImage: "doc.on.clipboard")
-                    }
-
-                    Button {
-                        bluetooth.clearLog()
-                    } label: {
-                        Label("Очистить события", systemImage: "trash")
-                    }
-                    .disabled(bluetooth.log.isEmpty)
-
-                    if !bluetooth.log.isEmpty {
-                        DisclosureGroup("Журнал BLE") {
-                            ForEach(Array(bluetooth.log.enumerated()), id: \.offset) { _, line in
-                                Text(line)
-                                    .font(.caption2.monospaced())
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                }
+                DiagnosticsSection()
             }
             .navigationTitle("BFA7 Bridge")
-            .onChange(of: bluetooth.devices.count) { count in
+            .onChange(of: glasses.devices.count) { count in
                 if count > 0 {
                     withAnimation { scannerExpanded = false }
                 }
@@ -197,8 +190,17 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private func statusRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+        }
+    }
+
     private var bluetoothState: String {
-        switch bluetooth.state {
+        switch glasses.state {
         case .poweredOn: return "Включен"
         case .poweredOff: return "Выключен"
         case .unauthorized: return "Нет разрешения"
@@ -207,5 +209,332 @@ struct ContentView: View {
         case .unknown: return "Неизвестно"
         @unknown default: return "Неизвестно"
         }
+    }
+}
+
+private struct CaptureView: View {
+    @EnvironmentObject private var media: MediaTransfer
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Wi-Fi transfer") {
+                    TextField("Base URL", text: $media.baseURLText)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    HStack {
+                        Button("Обновить список") {
+                            Task { await media.refreshFileList() }
+                        }
+                        Spacer()
+                        if media.isBusy { ProgressView() }
+                    }
+
+                    Button("Загрузить последний файл") {
+                        Task { await media.downloadLatest() }
+                    }
+                    .disabled(media.isBusy)
+
+                    Button("Ручной placeholder") {
+                        media.useLocalPlaceholder()
+                    }
+
+                    Text(media.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let latest = media.latestDownloaded {
+                    Section("Latest") {
+                        mediaRow(latest)
+                    }
+                }
+
+                Section("Files") {
+                    if media.files.isEmpty {
+                        Text("Список пуст")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(media.files) { file in
+                        Button {
+                            Task { await media.download(file) }
+                        } label: {
+                            mediaRow(file)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Capture")
+        }
+    }
+
+    @ViewBuilder
+    private func mediaRow(_ file: BFA7MediaFile) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(file.filename).font(.headline)
+            HStack {
+                Text(file.kind.rawValue)
+                Text(file.displaySize)
+                if file.localURL != nil { Text("downloaded") }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct AskView: View {
+    @EnvironmentObject private var media: MediaTransfer
+    @EnvironmentObject private var voice: VoiceIO
+    @EnvironmentObject private var commands: CommandSession
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Command") {
+                    TextField("Команда", text: $commands.commandText, axis: .vertical)
+                        .lineLimit(2...4)
+                    Button("Подготовить запрос") {
+                        commands.preparePayload(media: media.latestDownloaded)
+                    }
+                    Button("Free ChatGPT handoff") {
+                        Task { await commands.submitFree(media: media.latestDownloaded, voice: voice) }
+                    }
+                    Button("Скопировать prompt") {
+                        commands.copyPrompt()
+                    }
+                    Button("Проверить, что API выключен") {
+                        Task { await commands.provePaidAPIIsDisabled() }
+                    }
+                }
+
+                Section("Voice") {
+                    HStack {
+                        Button(voice.isRecording ? "Остановить запись" : "Push-to-talk") {
+                            voice.isRecording ? voice.stopRecording() : voice.startRecording()
+                        }
+                        Spacer()
+                        Button("Stop voice") { voice.stopSpeaking() }
+                    }
+                    Text(voice.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let url = voice.lastRecordingURL {
+                        Text(url.lastPathComponent)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Latest media") {
+                    if let latest = media.latestDownloaded {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(latest.filename).font(.headline)
+                            Text("\(latest.kind.rawValue) • \(latest.displaySize)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text("Нет загруженного файла")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Free gate") {
+                    Text(commands.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let payload = commands.lastPayload {
+                        DisclosureGroup("Prompt") {
+                            Text(payload.promptText)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Ask")
+        }
+    }
+}
+
+private struct DiagnosticsSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+
+    var body: some View {
+        Section("Диагностика") {
+            HStack {
+                Label("События", systemImage: "waveform.path.ecg")
+                Spacer()
+                Text("\(glasses.log.count)").foregroundStyle(.secondary)
+            }
+
+            Button {
+                UIPasteboard.general.string = glasses.diagnosticReport
+                glasses.noteCopiedReport()
+            } label: {
+                Label("Скопировать всё в буфер", systemImage: "doc.on.clipboard")
+            }
+
+            Button {
+                glasses.clearLog()
+            } label: {
+                Label("Очистить события", systemImage: "trash")
+            }
+            .disabled(glasses.log.isEmpty)
+
+            if !glasses.log.isEmpty {
+                DisclosureGroup("Журнал BLE") {
+                    ForEach(Array(glasses.log.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.caption2.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+private struct LabView: View {
+    var body: some View {
+        NavigationStack {
+            List {
+                ProtocolLabSection()
+                WiFiImportChecklistSection()
+            }
+            .navigationTitle("Lab")
+        }
+    }
+}
+
+private struct ProtocolLabSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+    @EnvironmentObject private var protocolLab: ProtocolLab
+
+    var body: some View {
+        Section("Protocol Lab") {
+            HStack {
+                Text("Packets")
+                Spacer()
+                Text("\(protocolLab.filteredPackets.count)/\(protocolLab.packets.count)")
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Characteristic filter", text: $protocolLab.characteristicFilter)
+                .textInputAutocapitalization(.characters)
+                .font(.body.monospaced())
+
+            Toggle("Only A5 A5 frames", isOn: $protocolLab.showOnlyA5Frames)
+
+            Text(protocolLab.packetStats)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            HStack {
+                Button("Copy JSON") {
+                    UIPasteboard.general.string = protocolLab.jsonExport
+                }
+                Button("Copy CSV") {
+                    UIPasteboard.general.string = protocolLab.csvExport
+                }
+                Button("Clear") {
+                    protocolLab.clear()
+                }
+                .disabled(protocolLab.packets.isEmpty)
+            }
+
+            Button("Copy focused report") {
+                UIPasteboard.general.string = protocolLab.focusedReport(around: glasses.buttonExperimentMarkedAt)
+            }
+            .disabled(protocolLab.filteredPackets.isEmpty)
+        }
+
+        Section("Button Timeline") {
+            if glasses.buttonExperimentMarkedAt == nil {
+                Text("Mark physical button in Device -> Button Experiment to center this timeline.")
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(protocolLab.timeline(around: glasses.buttonExperimentMarkedAt).suffix(80))) { entry in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(entry.relativeLabel).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(entry.packet.byteCount) B").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    }
+                    Text(entry.packet.characteristicUUID)
+                        .font(.caption2.monospaced())
+                    Text(entry.packet.firstBytes + (entry.packet.looksLikeA5Frame ? "  A5" : ""))
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(entry.packet.looksLikeA5Frame ? .primary : .secondary)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+}
+
+private struct WiFiImportChecklistSection: View {
+    @EnvironmentObject private var wifiLab: WiFiImportLab
+
+    var body: some View {
+        Section("Wi-Fi Import Checklist") {
+            TextField("SSID", text: binding(\.ssid))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            TextField("BFA7 IP", text: binding(\.glassesIP))
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+            TextField("iPhone IP", text: binding(\.iphoneIP))
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+            TextField("Gateway", text: binding(\.gateway))
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+            TextField("DNS", text: binding(\.dns))
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+            TextField("Open ports", text: binding(\.openPorts), axis: .vertical)
+                .lineLimit(1...3)
+                .textInputAutocapitalization(.never)
+            TextField("Protocol/endpoints", text: binding(\.protocolNotes), axis: .vertical)
+                .lineLimit(2...5)
+                .textInputAutocapitalization(.never)
+            TextField("Capture notes", text: binding(\.captureNotes), axis: .vertical)
+                .lineLimit(2...6)
+
+            HStack {
+                Button("Copy report") {
+                    wifiLab.markUpdated()
+                    UIPasteboard.general.string = wifiLab.checklist.markdownReport
+                }
+                Button("Reset") {
+                    wifiLab.reset()
+                }
+            }
+        }
+
+        Section("Import Targets") {
+            Text("Capture these during Xiaomi Glasses App Import: SSID, BFA7 IP, iPhone IP, gateway, DNS, open TCP/UDP ports, and endpoints. USB-C to PC is not enough to observe this traffic.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func binding(_ keyPath: WritableKeyPath<WiFiImportChecklist, String>) -> Binding<String> {
+        Binding(
+            get: { wifiLab.checklist[keyPath: keyPath] },
+            set: { newValue in
+                var updated = wifiLab.checklist
+                updated[keyPath: keyPath] = newValue
+                updated.lastUpdated = Date()
+                wifiLab.checklist = updated
+            }
+        )
     }
 }

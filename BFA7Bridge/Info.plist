@@ -16,15 +16,26 @@
     <string>0.1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>chatgpt</string>
+    </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
-    <key>UILaunchScreen</key>
-    <dict/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoadsInLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>BFA7 Bridge использует Bluetooth для обнаружения и подключения к Xiaomi AI Glasses.</string>
     <key>NSCameraUsageDescription</key>
     <string>BFA7 Bridge использует камеру для работы с изображениями при взаимодействии с Xiaomi AI Glasses.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>BFA7 Bridge подключается к локальному Wi-Fi интерфейсу очков для загрузки фото и видео.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>BFA7 Bridge использует микрофон для голосовых команд и взаимодействия с Xiaomi AI Glasses.</string>
+    <key>UILaunchScreen</key>
+    <dict/>
 </dict>
 </plist>

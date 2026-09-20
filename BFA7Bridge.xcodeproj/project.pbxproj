@@ -13,6 +13,14 @@
 		AA0000000000000000000015 /* BFA7EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000025 /* BFA7EventBus.swift */; };
 		AA0000000000000000000016 /* BFA7LabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000026 /* BFA7LabModels.swift */; };
 		AA0000000000000000000014 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000024 /* Info.plist */; };
+		AA0000000000000000000017 /* GlassesTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000027 /* GlassesTransport.swift */; };
+		AA0000000000000000000018 /* MediaTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000028 /* MediaTransfer.swift */; };
+		AA0000000000000000000019 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000029 /* AIProvider.swift */; };
+		AA000000000000000000001A /* VoiceIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002A /* VoiceIO.swift */; };
+		AA000000000000000000001B /* CommandSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002B /* CommandSession.swift */; };
+		AA000000000000000000001C /* BFA7AppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002C /* BFA7AppIntents.swift */; };
+		AA000000000000000000001D /* ProtocolLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002D /* ProtocolLab.swift */; };
+		AA000000000000000000001E /* WiFiImportLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002E /* WiFiImportLab.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +31,14 @@
 		AA0000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000000000000000000025 /* BFA7EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7EventBus.swift; sourceTree = "<group>"; };
 		AA0000000000000000000026 /* BFA7LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7LabModels.swift; sourceTree = "<group>"; };
+		AA0000000000000000000027 /* GlassesTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesTransport.swift; sourceTree = "<group>"; };
+		AA0000000000000000000028 /* MediaTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTransfer.swift; sourceTree = "<group>"; };
+		AA0000000000000000000029 /* AIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProvider.swift; sourceTree = "<group>"; };
+		AA000000000000000000002A /* VoiceIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIO.swift; sourceTree = "<group>"; };
+		AA000000000000000000002B /* CommandSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSession.swift; sourceTree = "<group>"; };
+		AA000000000000000000002C /* BFA7AppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7AppIntents.swift; sourceTree = "<group>"; };
+		AA000000000000000000002D /* ProtocolLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolLab.swift; sourceTree = "<group>"; };
+		AA000000000000000000002E /* WiFiImportLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiImportLab.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +68,14 @@
 				AA0000000000000000000023 /* ContentView.swift */,
 				AA0000000000000000000025 /* BFA7EventBus.swift */,
 				AA0000000000000000000026 /* BFA7LabModels.swift */,
+				AA0000000000000000000027 /* GlassesTransport.swift */,
+				AA0000000000000000000028 /* MediaTransfer.swift */,
+				AA0000000000000000000029 /* AIProvider.swift */,
+				AA000000000000000000002A /* VoiceIO.swift */,
+				AA000000000000000000002B /* CommandSession.swift */,
+				AA000000000000000000002C /* BFA7AppIntents.swift */,
+				AA000000000000000000002D /* ProtocolLab.swift */,
+				AA000000000000000000002E /* WiFiImportLab.swift */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
 			path = BFA7Bridge;
@@ -132,6 +156,14 @@
 				AA0000000000000000000013 /* ContentView.swift in Sources */,
 				AA0000000000000000000015 /* BFA7EventBus.swift in Sources */,
 				AA0000000000000000000016 /* BFA7LabModels.swift in Sources */,
+				AA0000000000000000000017 /* GlassesTransport.swift in Sources */,
+				AA0000000000000000000018 /* MediaTransfer.swift in Sources */,
+				AA0000000000000000000019 /* AIProvider.swift in Sources */,
+				AA000000000000000000001A /* VoiceIO.swift in Sources */,
+				AA000000000000000000001B /* CommandSession.swift in Sources */,
+				AA000000000000000000001C /* BFA7AppIntents.swift in Sources */,
+				AA000000000000000000001D /* ProtocolLab.swift in Sources */,
+				AA000000000000000000001E /* WiFiImportLab.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
