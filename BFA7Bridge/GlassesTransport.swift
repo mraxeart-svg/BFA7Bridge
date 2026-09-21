@@ -17,6 +17,9 @@ final class GlassesTransport: NSObject, ObservableObject {
     @Published private(set) var buttonExperimentState = "Ожидание"
     @Published private(set) var buttonExperimentStartedAt: Date?
     @Published private(set) var buttonExperimentMarkedAt: Date?
+    @Published private(set) var importExperimentState = "Ожидание"
+    @Published private(set) var importExperimentStartedAt: Date?
+    @Published private(set) var importExperimentMarkedAt: Date?
     @Published private(set) var capabilities: [BFA7Capability] = [
         .init(id: "ble", title: "Bluetooth LE", status: "Готов"),
         .init(id: "gatt", title: "GATT Explorer", status: "Готов"),
@@ -146,6 +149,71 @@ final class GlassesTransport: NSObject, ObservableObject {
             lines.append("\(relative) | \(event.kind.rawValue.uppercased()) | \(event.title)\(detail)")
         }
 
+        return lines.joined(separator: "\n")
+    }
+
+    func startImportExperiment() {
+        clearLog()
+        protocolLab.clear()
+        let now = Date()
+        importExperimentStartedAt = now
+        importExperimentMarkedAt = nil
+        importExperimentState = "Baseline: открой Xiaomi app и готовь Import"
+        appendLog("IMPORT EXPERIMENT START", kind: .wifi, detail: "Idle baseline before Xiaomi Glasses Import action")
+    }
+
+    func markXiaomiImportPressed() {
+        let now = Date()
+        importExperimentMarkedAt = now
+        importExperimentState = "Import отмечен: жди Wi-Fi prompt/server"
+        appendLog("IMPORT PRESS MARK", kind: .wifi, detail: "Tester pressed Import in Xiaomi Glasses app")
+    }
+
+    func finishImportExperiment() -> String {
+        importExperimentState = "Отчёт готов"
+        let report = importExperimentReport
+        appendLog("IMPORT EXPERIMENT REPORT GENERATED", kind: .wifi)
+        return report
+    }
+
+    var importExperimentReport: String {
+        var lines: [String] = []
+        lines.append("BFA7 Import Experiment")
+        lines.append("Generated: \(Self.timestamp())")
+        lines.append("Goal: find BLE activity around Xiaomi Glasses Import mode start")
+        lines.append("Start: \(importExperimentStartedAt?.ISO8601Format() ?? "not marked")")
+        lines.append("Import mark: \(importExperimentMarkedAt?.ISO8601Format() ?? "not marked")")
+        lines.append("Connection: \(connectionState)")
+        lines.append("Writable characteristics: \(writableCharacteristics.joined(separator: ", "))")
+        lines.append("")
+        lines.append("Protocol summary:")
+        lines.append(protocolLab.activityReport(around: importExperimentMarkedAt, label: "Import"))
+        lines.append("")
+        lines.append("Capture burst summary:")
+        lines.append(protocolLab.captureBurstReport(around: importExperimentMarkedAt))
+        lines.append("")
+        lines.append("Scoped events:")
+
+        let scopedEvents = eventBus.events.filter { event in
+            guard let start = importExperimentStartedAt else { return true }
+            if let mark = importExperimentMarkedAt {
+                return event.date >= mark.addingTimeInterval(-15) && event.date <= mark.addingTimeInterval(30)
+            }
+            return event.date >= start
+        }
+
+        for event in scopedEvents {
+            let relative: String
+            if let mark = importExperimentMarkedAt {
+                relative = String(format: "%+.3fs", event.date.timeIntervalSince(mark))
+            } else if let start = importExperimentStartedAt {
+                relative = String(format: "%+.3fs", event.date.timeIntervalSince(start))
+            } else {
+                relative = "+0.000s"
+            }
+            let detail = event.detail.isEmpty ? "" : " | \(event.detail)"
+            lines.append("\(relative) | \(event.kind.rawValue.uppercased()) | \(event.title)\(detail)")
+        }
         return lines.joined(separator: "\n")
     }
 

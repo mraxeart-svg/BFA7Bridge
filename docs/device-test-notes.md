@@ -149,3 +149,13 @@ Implementation note:
 - Downloads now reject non-2xx HTTP statuses instead of saving error bodies as media.
 - Download attempts now try fallback extensions for extensionless remote paths, such as `.jpg`, `.heic`, and `.jpeg` for photo entries.
 - Failed download reports include every candidate URL plus HTTP status, MIME, byte count, signature, and body preview.
+
+
+## 2026-09-21 Import Lab build
+
+Implementation note:
+
+- Lab now includes an `Import Lab` section for the next reverse-engineering milestone: finding the BLE/Wi-Fi trigger used by Xiaomi Glasses Import mode.
+- The flow is `Start import experiment` -> switch to Xiaomi app -> press Import -> return and `Mark Xiaomi Import press` -> accept Wi-Fi -> `Run Wi-Fi probe` -> copy import and probe reports.
+- The import report includes scoped BLE events, protocol activity grouped by characteristic, packet timeline, and capture-burst heuristics around the import mark.
+- This is intended to identify candidate BLE notifications/writes before attempting replay presets.

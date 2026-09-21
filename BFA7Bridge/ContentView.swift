@@ -567,10 +567,71 @@ private struct LabView: View {
     var body: some View {
         NavigationStack {
             List {
+                ImportLabSection()
                 ProtocolLabSection()
                 WiFiImportChecklistSection()
             }
             .navigationTitle("Lab")
+        }
+    }
+}
+
+
+private struct ImportLabSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+    @EnvironmentObject private var protocolLab: ProtocolLab
+    @EnvironmentObject private var media: MediaTransfer
+
+    var body: some View {
+        Section("Import Lab") {
+            Text("Цель: найти BLE/Wi-Fi момент, когда Xiaomi app включает Import mode.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Text("Состояние")
+                Spacer()
+                Text(glasses.importExperimentState)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            Button("Start import experiment") {
+                glasses.startImportExperiment()
+            }
+
+            Button("Mark Xiaomi Import press") {
+                glasses.markXiaomiImportPressed()
+            }
+            .disabled(glasses.importExperimentStartedAt == nil)
+
+            Button("Copy import experiment report") {
+                UIPasteboard.general.string = glasses.finishImportExperiment()
+            }
+            .disabled(glasses.importExperimentStartedAt == nil)
+
+            HStack {
+                Button("Run Wi-Fi probe") {
+                    Task { await media.runWiFiProbe() }
+                }
+                .disabled(media.isBusy)
+
+                Spacer()
+
+                Button("Copy probe") {
+                    UIPasteboard.general.string = media.lastProbeReport
+                }
+            }
+
+            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy import report + Copy probe.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Text(protocolLab.activityReport(around: glasses.importExperimentMarkedAt, label: "Import"))
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(8)
+                .textSelection(.enabled)
         }
     }
 }

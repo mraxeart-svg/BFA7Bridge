@@ -349,6 +349,45 @@ final class ProtocolLab: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+
+    func activityReport(around date: Date?, label: String) -> String {
+        let entries = timeline(around: date)
+        var lines: [String] = []
+        lines.append("BFA7 \(label) Activity Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Window: -\(String(format: "%.1f", timelineWindowBefore))s...+\(String(format: "%.1f", timelineWindowAfter))s")
+        lines.append(packetStats)
+        lines.append("")
+
+        guard !entries.isEmpty else {
+            lines.append("No packets in focused window.")
+            return lines.joined(separator: "\n")
+        }
+
+        let byCharacteristic = Dictionary(grouping: entries) { $0.packet.characteristicUUID }
+        lines.append("By characteristic:")
+        for key in byCharacteristic.keys.sorted() {
+            let group = byCharacteristic[key] ?? []
+            let byteCount = group.reduce(0) { $0 + $1.packet.byteCount }
+            let sizes = Dictionary(grouping: group) { $0.packet.byteCount }
+                .map { size, items in "\(size)B x\(items.count)" }
+                .sorted()
+                .joined(separator: ", ")
+            let first = group.map(\.relativeSeconds).min() ?? 0
+            let last = group.map(\.relativeSeconds).max() ?? 0
+            let a5 = group.filter { $0.packet.looksLikeA5Frame }.count
+            lines.append("- \(key): packets=\(group.count), bytes=\(byteCount), A5=\(a5), range=\(String(format: "%+.3fs", first))...\(String(format: "%+.3fs", last)), sizes=[\(sizes)]")
+        }
+
+        lines.append("")
+        lines.append("Timeline:")
+        for entry in entries {
+            lines.append("\(entry.relativeLabel) | \(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.firstBytes) | \(entry.packet.frame?.summary ?? "raw")")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     func focusedReport(around date: Date?) -> String {
         var lines: [String] = []
         lines.append("BFA7 Protocol Lab focused report")
