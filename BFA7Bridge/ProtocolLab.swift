@@ -140,6 +140,36 @@ struct BFA7TimelineEntry: Identifiable, Hashable {
     }
 }
 
+struct BFA7BurstSummary: Identifiable, Hashable {
+    let id = UUID()
+    let relativeStart: TimeInterval
+    let relativeEnd: TimeInterval
+    let packetCount: Int
+    let byteCount: Int
+    let payloadStartCount: Int
+    let continuationCount: Int
+    let shortControlCount: Int
+    let sequenceRange: String
+    let firstHeader: String
+    let lastHeader: String
+
+    var duration: TimeInterval {
+        max(0, relativeEnd - relativeStart)
+    }
+
+    var relativeRangeLabel: String {
+        "\(Self.timeLabel(relativeStart))...\(Self.timeLabel(relativeEnd))"
+    }
+
+    var line: String {
+        "\(relativeRangeLabel) | duration=\(String(format: "%.3fs", duration)) | packets=\(packetCount) | bytes=\(byteCount) | starts=\(payloadStartCount) | continuations=\(continuationCount) | controls=\(shortControlCount) | seq=\(sequenceRange) | first=\(firstHeader) | last=\(lastHeader)"
+    }
+
+    private static func timeLabel(_ value: TimeInterval) -> String {
+        String(format: "%+.3fs", value)
+    }
+}
+
 @MainActor
 final class ProtocolLab: ObservableObject {
     @Published private(set) var packets: [BFA7ProtocolPacket] = []
@@ -176,6 +206,61 @@ final class ProtocolLab: ObservableObject {
             guard relative >= -timelineWindowBefore && relative <= timelineWindowAfter else { return nil }
             return BFA7TimelineEntry(relativeSeconds: relative, packet: packet)
         }
+    }
+
+    func burstSummaries(around date: Date?) -> [BFA7BurstSummary] {
+        let candidates = timeline(around: date)
+            .filter { entry in
+                entry.packet.byteCount >= 64 || entry.packet.frame?.kind == .payloadStart || entry.packet.frame?.kind == .payloadContinuation
+            }
+            .sorted { $0.relativeSeconds < $1.relativeSeconds }
+
+        var groups: [[BFA7TimelineEntry]] = []
+        let maxGap: TimeInterval = 0.35
+
+        for entry in candidates {
+            if let lastGroup = groups.indices.last, let previous = groups[lastGroup].last, entry.relativeSeconds - previous.relativeSeconds <= maxGap {
+                groups[lastGroup].append(entry)
+            } else {
+                groups.append([entry])
+            }
+        }
+
+        return groups.compactMap { group in
+            let byteCount = group.reduce(0) { $0 + $1.packet.byteCount }
+            guard byteCount >= 4096 || group.count >= 8 else { return nil }
+
+            let payloadStarts = group.filter { $0.packet.frame?.kind == .payloadStart }
+            let continuations = group.filter { $0.packet.frame?.kind == .payloadContinuation }
+            let controls = group.filter { $0.packet.frame?.kind == .shortControl }
+            let sequences = payloadStarts.compactMap { $0.packet.frame?.sequence }
+            let sequenceRange: String
+            if let first = sequences.first, let last = sequences.last {
+                sequenceRange = String(format: "0x%02X...0x%02X", first, last)
+            } else {
+                sequenceRange = "none"
+            }
+
+            return BFA7BurstSummary(
+                relativeStart: group.first?.relativeSeconds ?? 0,
+                relativeEnd: group.last?.relativeSeconds ?? 0,
+                packetCount: group.count,
+                byteCount: byteCount,
+                payloadStartCount: payloadStarts.count,
+                continuationCount: continuations.count,
+                shortControlCount: controls.count,
+                sequenceRange: sequenceRange,
+                firstHeader: group.first?.packet.firstBytes ?? "",
+                lastHeader: group.last?.packet.firstBytes ?? ""
+            )
+        }
+    }
+
+    var burstStats: String {
+        let bursts = burstSummaries(around: nil)
+        guard !bursts.isEmpty else { return "capture bursts=0" }
+        let largest = bursts.max { $0.byteCount < $1.byteCount }
+        return "capture bursts=\(bursts.count), largest=\(largest?.byteCount ?? 0)B"
     }
 
     var packetStats: String {
@@ -244,12 +329,33 @@ final class ProtocolLab: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+    func captureBurstReport(around date: Date?) -> String {
+        let bursts = burstSummaries(around: date)
+        var lines: [String] = []
+        lines.append("BFA7 Capture Burst Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Heuristic: grouped payload/large packets with <=350ms gaps; candidate if >=4096 bytes or >=8 packets.")
+        lines.append("")
+
+        if bursts.isEmpty {
+            lines.append("No capture-sized burst found in the focused window.")
+        } else {
+            for burst in bursts {
+                lines.append(burst.line)
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     func focusedReport(around date: Date?) -> String {
         var lines: [String] = []
         lines.append("BFA7 Protocol Lab focused report")
         lines.append("Generated: \(Date().ISO8601Format())")
         lines.append("Filter: \(characteristicFilter.isEmpty ? "all" : characteristicFilter)")
         lines.append(packetStats)
+        lines.append(burstStats)
         lines.append("")
         for entry in timeline(around: date) {
             lines.append("\(entry.relativeLabel) | \(entry.packet.line)")

@@ -25,3 +25,22 @@ Interpretation for the next build:
 - `A5 A5 01 NN 00 00 00 00` currently looks like a short control/counter frame, not a confirmed physical button event.
 - The next test should rely on the new Protocol Lab frame summary and `Copy button candidates` report rather than the full diagnostic event log.
 - Full payload bytes remain available through Lab JSON/CSV; the regular diagnostic report now uses compact previews so copied reports stay readable.
+
+
+## 2026-09-21 physical button experiment at 13:45
+
+Source: tester-pasted Button Experiment report generated at 13:45:54.647.
+
+Observed around the manual button mark at `2026-09-21T10:45:38Z`:
+
+- Before the mark, the app saw a small baseline group on `005E` near `-8.735s`: payload-start `seq=0xCA`, short control `seq=0xAD`, and payload-start `seq=0xCB`.
+- After the physical button mark, a much larger packet burst starts at about `+0.232s` and runs until about `+0.999s`.
+- The burst includes sequential payload-start frames `0xCC...0xD5` and many 495-byte continuation chunks, plus 146-byte tail chunks.
+- A later short control frame appears at `+1.130s`: `A5 A5 01 B1 00 00 00 00`; this looks more like a counter/ack after the burst than the physical button itself.
+- Smaller follow-up frames appear around `+4.233s` and `+9.235s`.
+
+Interpretation:
+
+- The physical camera button probably does not emit a single obvious BLE button event on `005E`. Instead, it appears to trigger a capture/media payload burst within roughly 250ms.
+- For the next build, Protocol Lab should detect and summarize capture-sized bursts around the manual mark. This gives us a better reverse-engineering target than treating every short `A5 A5 01 NN` frame as a button event.
+- Next test target: copy `Capture Burst Report`, `Focused Report`, and JSON/CSV only if we need full payload reconstruction.

@@ -457,6 +457,34 @@ private struct ProtocolLabSection: View {
                 UIPasteboard.general.string = protocolLab.buttonCandidateReport(around: glasses.buttonExperimentMarkedAt)
             }
             .disabled(protocolLab.filteredPackets.isEmpty)
+
+            Button("Copy capture burst report") {
+                UIPasteboard.general.string = protocolLab.captureBurstReport(around: glasses.buttonExperimentMarkedAt)
+            }
+            .disabled(protocolLab.filteredPackets.isEmpty)
+        }
+
+        Section("Capture Bursts") {
+            let bursts = protocolLab.burstSummaries(around: glasses.buttonExperimentMarkedAt)
+
+            if bursts.isEmpty {
+                Text("No capture-sized burst in the focused window.")
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(bursts) { burst in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(burst.relativeRangeLabel)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    Text("\(burst.byteCount) B / \(burst.packetCount) packets / seq \(burst.sequenceRange)")
+                        .font(.caption.monospaced())
+                    Text("starts \(burst.payloadStartCount), continuations \(burst.continuationCount), controls \(burst.shortControlCount)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+            }
         }
 
         Section("Button Timeline") {
