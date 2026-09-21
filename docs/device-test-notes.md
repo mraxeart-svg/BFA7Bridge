@@ -121,6 +121,8 @@ Observed:
 - `Download latest file` succeeded through `http://192.168.43.1:8080`.
 - Latest downloaded file displayed as `VID_20260919220615`, size `22.4 MB`, downloaded.
 - The file list included at least `VID_20260919220615` (`22.4 MB`) and `VID_20260919220316` (`445.4 MB`).
+- A later file-list report confirmed `GET /v1/filelists` returns HTTP `200`, MIME `text/plain`, suggested filename `filelists.txt`, and JSON/plain payload bytes `2056`.
+- The parsed photo entries used display names like `IMG_20260921151123206` while download paths used `filelists/LLHDR_20260921151123206_4032x3024_5`, with sizes around `31-35 MB`.
 
 Interpretation:
 

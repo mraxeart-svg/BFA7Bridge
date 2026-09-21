@@ -76,14 +76,15 @@ final class MediaTransfer: ObservableObject {
             let (temporaryURL, response) = try await session.download(from: url)
             let directory = try mediaDirectory()
             let responseKind = BFA7MediaKind(mimeType: response.mimeType)
-            let savedName = Self.filenameForDownloadedFile(file, response: response, responseKind: responseKind)
+            let detected = Self.detectMedia(at: temporaryURL, fallback: responseKind == .unknown ? file.kind : responseKind)
+            let savedName = Self.filenameForDownloadedFile(file, response: response, detected: detected)
             let destination = directory.appendingPathComponent(savedName)
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: temporaryURL, to: destination)
 
-            let finalKind = Self.kind(for: destination, fallback: responseKind == .unknown ? file.kind : responseKind)
+            let finalKind = detected.kind
             let attributes = try? FileManager.default.attributesOfItem(atPath: destination.path)
             let actualSize = (attributes?[.size] as? NSNumber)?.intValue ?? file.sizeBytes
             let saved = BFA7MediaFile(
@@ -103,7 +104,11 @@ final class MediaTransfer: ObservableObject {
                 response: response,
                 byteCount: actualSize ?? 0,
                 files: [saved],
-                error: nil
+                error: nil,
+                extraLines: [
+                    "Detected signature: \(detected.signature)",
+                    "Detected extension: \(detected.preferredExtension ?? "none")"
+                ]
             )
         } catch {
             status = "Ошибка загрузки: \(error.localizedDescription)"
@@ -142,36 +147,55 @@ final class MediaTransfer: ObservableObject {
         return components.url
     }
 
-    private static func filenameForDownloadedFile(_ file: BFA7MediaFile, response: URLResponse, responseKind: BFA7MediaKind) -> String {
+    private struct MediaDetection {
+        let kind: BFA7MediaKind
+        let preferredExtension: String?
+        let signature: String
+    }
+
+    private static func filenameForDownloadedFile(_ file: BFA7MediaFile, response: URLResponse, detected: MediaDetection) -> String {
         let rawName = response.suggestedFilename?.isEmpty == false ? response.suggestedFilename! : file.filename
         let name = URL(fileURLWithPath: rawName).lastPathComponent
-        guard URL(fileURLWithPath: name).pathExtension.isEmpty else { return name }
-
-        let kind = responseKind == .unknown ? file.kind : responseKind
-        switch kind {
-        case .photo:
-            return name + ".jpg"
-        case .video:
-            return name + ".mp4"
-        case .audio:
-            return name + ".m4a"
-        case .unknown:
+        guard URL(fileURLWithPath: name).pathExtension.isEmpty, let ext = detected.preferredExtension else {
             return name
         }
+        return name + "." + ext
     }
 
-    private static func kind(for url: URL, fallback: BFA7MediaKind) -> BFA7MediaKind {
-        if fallback != .unknown { return fallback }
+    private static func detectMedia(at url: URL, fallback: BFA7MediaKind) -> MediaDetection {
         guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
-            return BFA7MediaKind(filename: url.lastPathComponent)
+            return MediaDetection(kind: fallback, preferredExtension: fallbackExtension(for: fallback), signature: "unreadable")
         }
-        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return .photo }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return .photo }
-        if data.count >= 12, let marker = String(data: data[4..<12], encoding: .ascii), marker.contains("ftyp") { return .video }
-        return BFA7MediaKind(filename: url.lastPathComponent)
+
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return MediaDetection(kind: .photo, preferredExtension: "jpg", signature: "jpeg")
+        }
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return MediaDetection(kind: .photo, preferredExtension: "png", signature: "png")
+        }
+        if data.count >= 12, let brand = String(data: data[4..<12], encoding: .ascii), brand.contains("ftyp") {
+            let ext = (brand.contains("heic") || brand.contains("heif") || brand.contains("mif1")) ? "heic" : "mp4"
+            let kind: BFA7MediaKind = ext == "heic" ? .photo : .video
+            return MediaDetection(kind: kind, preferredExtension: ext, signature: brand.trimmingCharacters(in: .controlCharacters))
+        }
+
+        return MediaDetection(kind: fallback, preferredExtension: fallbackExtension(for: fallback), signature: firstBytesHex(data))
     }
 
-    private static func transferReport(title: String, url: URL, response: URLResponse?, byteCount: Int, files: [BFA7MediaFile], error: Error?) -> String {
+    private static func fallbackExtension(for kind: BFA7MediaKind) -> String? {
+        switch kind {
+        case .photo: return "jpg"
+        case .video: return "mp4"
+        case .audio: return "m4a"
+        case .unknown: return nil
+        }
+    }
+
+    private static func firstBytesHex(_ data: Data) -> String {
+        data.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+
+    private static func transferReport(title: String, url: URL, response: URLResponse?, byteCount: Int, files: [BFA7MediaFile], error: Error?, extraLines: [String] = []) -> String {
         var lines = [
             title,
             "Generated: \(Date().ISO8601Format())",
@@ -185,6 +209,7 @@ final class MediaTransfer: ObservableObject {
             lines.append("Suggested filename: \(response.suggestedFilename ?? "none")")
         }
         lines.append("Bytes: \(byteCount)")
+        lines.append(contentsOf: extraLines)
         if let error {
             lines.append("Error: \(error.localizedDescription)")
         }
