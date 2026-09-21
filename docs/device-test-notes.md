@@ -129,3 +129,12 @@ Interpretation:
 - The media-transfer half is real when the glasses are put into Import mode by the official app.
 - BFA7 Bridge should now infer media type from filename/MIME/file signature and offer a share/export route for the downloaded file.
 - Remaining reverse-engineering target: identify the BLE command sequence that starts Import mode without opening the official Xiaomi Glasses app.
+
+
+## 2026-09-21 Wi-Fi Probe build
+
+Implementation note:
+
+- Capture now includes an editable Wi-Fi Probe path list saved in `UserDefaults`, plus `Run probe` and `Copy probe report`.
+- Probe results capture URL, HTTP status, MIME, suggested filename, byte count, signature, short preview, and errors.
+- This is intended to reduce IPA churn: future endpoint experiments can be run from the installed app by editing paths on-device.

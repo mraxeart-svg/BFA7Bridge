@@ -271,6 +271,51 @@ private struct CaptureView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("Wi-Fi Probe") {
+                    TextField("Probe paths", text: $media.probePathsText, axis: .vertical)
+                        .lineLimit(4...10)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+
+                    HStack {
+                        Button("Run probe") {
+                            Task { await media.runWiFiProbe() }
+                        }
+                        .disabled(media.isBusy)
+
+                        Spacer()
+
+                        Button("Copy probe report") {
+                            UIPasteboard.general.string = media.lastProbeReport
+                        }
+                    }
+
+                    if media.probeResults.isEmpty {
+                        Text("Probe ещё не запускался")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(media.probeResults) { result in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(result.path)
+                                .font(.caption.monospaced())
+                            Text(result.summary)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(result.error == nil ? Color.secondary : Color.red)
+                            if !result.preview.isEmpty {
+                                Text(result.preview)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(4)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
                 if let latest = media.latestDownloaded {
                     Section("Latest") {
                         mediaRow(latest)
