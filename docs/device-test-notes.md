@@ -284,3 +284,14 @@ Implementation note:
 - Lab now includes an APK-derived CreateWifiAP candidate builder with editable `seq` and `wifiType` (`0...4`).
 - This is still experimental: success is defined only by the glasses starting the Wi-Fi AP and `/v1/filelists` becoming reachable from BFA7 Bridge.
 - Android hardware is not required for the next test; Windows GATT is also not required because the iPhone app can write the candidate over CoreBluetooth.
+
+
+## 2026-09-21 Import Lab control fix
+
+Tester observed that `Write APK CreateWifiAP + probe` becomes disabled after a failed/manual probe path because it is gated by `media.isBusy`. The BLE write itself should remain available while Wi-Fi probing is busy or stuck.
+
+Implementation note:
+
+- Split the APK-derived action into `Write APK only` and `Write APK + probe`.
+- `Write APK only` is disabled only by the explicit safety toggle, so candidate testing can continue even when media probing is busy.
+- `Write APK + probe` remains gated by `media.isBusy` because it starts an HTTP transfer/probe.

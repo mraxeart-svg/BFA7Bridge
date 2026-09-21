@@ -755,17 +755,29 @@ private struct ImportLabSection: View {
                 .disabled(!canWriteImportTrigger || media.isBusy)
             }
 
-            Button("Write APK CreateWifiAP + probe") {
-                Task {
+            HStack {
+                Button("Write APK only") {
                     importTriggerHex = createWifiAPCandidateHex
                     if glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget) {
                         createWifiAPSeq = nextHexByte(after: createWifiAPSeq)
-                        try? await Task.sleep(nanoseconds: 5_000_000_000)
-                        await media.refreshFileList()
                     }
                 }
+                .disabled(!importTriggerEnabled)
+
+                Spacer()
+
+                Button("Write APK + probe") {
+                    Task {
+                        importTriggerHex = createWifiAPCandidateHex
+                        if glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget) {
+                            createWifiAPSeq = nextHexByte(after: createWifiAPSeq)
+                            try? await Task.sleep(nanoseconds: 5_000_000_000)
+                            await media.refreshFileList()
+                        }
+                    }
+                }
+                .disabled(!importTriggerEnabled || media.isBusy)
             }
-            .disabled(!importTriggerEnabled || media.isBusy)
 
             Text("Важно: это лаборатория для проверенных BLE-кандидатов. Наблюдаемые incoming A5-пакеты не считаются доказанными командами Xiaomi app.")
                 .font(.caption2)
