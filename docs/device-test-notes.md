@@ -96,3 +96,17 @@ Interpretation:
 
 - The iOS push-to-talk path is not just selecting a route; it is capturing non-empty audio from the glasses.
 - Next implementation target is local/free command transcription through iOS Speech so the latest BFA7 recording can become the Ask command without using paid OpenAI API calls.
+
+
+## 2026-09-21 BFA7 speech transcription confirmed
+
+Source: tester report after installing the Speech build.
+
+Observed:
+
+- A spoken phrase recorded through the BFA7 Bluetooth HFP microphone was recognized correctly by iOS Speech.
+
+Interpretation:
+
+- The free/local command intake path is now proven through iOS system speech recognition: BFA7 mic -> app recording -> transcription -> Ask command text.
+- The next UI refinement is a one-tap action that transcribes the latest recording and prepares the command/media payload for the free ChatGPT handoff.

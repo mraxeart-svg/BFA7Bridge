@@ -391,6 +391,16 @@ private struct AskView: View {
                     }
                     .disabled(voice.isRecording || voice.lastRecordingURL == nil)
 
+                    Button("Распознать и подготовить запрос") {
+                        Task {
+                            if let transcript = await speech.transcribe(url: voice.lastRecordingURL) {
+                                commands.commandText = transcript
+                                commands.preparePayload(media: media.latestDownloaded)
+                            }
+                        }
+                    }
+                    .disabled(voice.isRecording || voice.lastRecordingURL == nil)
+
                     Button("Скопировать аудио-отчёт") {
                         voice.refreshRouteStatus()
                         UIPasteboard.general.string = voice.audioRouteReport
