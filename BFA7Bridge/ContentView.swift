@@ -307,6 +307,21 @@ private struct CaptureView: View {
                     }
                     .disabled(media.isBusy)
 
+                    TextField("Latest file template probe", text: $media.latestTemplateProbeText, axis: .vertical)
+                        .lineLimit(4...12)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+
+                    Button("Run latest template probe") {
+                        Task { await media.runLatestTemplateProbe() }
+                    }
+                    .disabled(media.isBusy)
+
+                    Text("Шаблоны: {remote}, {remoteRaw}, {remoteLeaf}, {remoteLeafRaw}, {identifier}, {identifierRaw}, {filename}, {filenameRaw}, {filenameBase}, {id}. Для POST: POST /path | {json}.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
                     if media.probeResults.isEmpty {
                         Text("Probe ещё не запускался")
                             .font(.caption)

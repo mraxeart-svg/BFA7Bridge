@@ -20,6 +20,13 @@ struct BFA7WiFiProbeResult: Identifiable, Hashable {
     }
 }
 
+private struct BFA7ProbeRequest {
+    let method: String
+    let path: String
+    let body: String?
+    let label: String
+}
+
 @MainActor
 final class MediaTransfer: ObservableObject {
     @Published var baseURLText: String {
@@ -30,6 +37,9 @@ final class MediaTransfer: ObservableObject {
     }
     @Published var methodProbePathsText: String {
         didSet { UserDefaults.standard.set(methodProbePathsText, forKey: Self.methodProbePathsKey) }
+    }
+    @Published var latestTemplateProbeText: String {
+        didSet { UserDefaults.standard.set(latestTemplateProbeText, forKey: Self.latestTemplateProbeKey) }
     }
     @Published private(set) var files: [BFA7MediaFile] = []
     @Published private(set) var latestDownloaded: BFA7MediaFile?
@@ -42,6 +52,7 @@ final class MediaTransfer: ObservableObject {
     private static let baseURLKey = "BFA7Bridge.media.baseURL"
     private static let probePathsKey = "BFA7Bridge.media.probePaths"
     private static let methodProbePathsKey = "BFA7Bridge.media.methodProbePaths"
+    private static let latestTemplateProbeKey = "BFA7Bridge.media.latestTemplateProbePaths"
     private static let defaultBaseURL = "http://192.168.43.1:8080"
     private static let defaultProbePaths = [
         "/",
@@ -57,6 +68,23 @@ final class MediaTransfer: ObservableObject {
         "/v1/media",
         "/v1/filelists"
     ].joined(separator: "\n")
+    private static let defaultLatestTemplateProbePaths = [
+        "/v1/files?url={remote}",
+        "/v1/files?path={remote}",
+        "/v1/files?name={filename}",
+        "/v1/files?identifier={identifier}",
+        "/v1/filelists/{remoteLeaf}",
+        "/v1/filelists/{identifier}",
+        "/v1/files/{remoteLeaf}",
+        "/v1/files/{identifier}",
+        "/file/{remoteLeaf}",
+        "/files/{remoteLeaf}",
+        "/download/{remoteLeaf}",
+        "/download?url={remote}",
+        "POST /v1/files | {\"url\":\"{remote}\"}",
+        "POST /v1/files | {\"path\":\"{remote}\"}",
+        "POST /v1/files | {\"filename\":\"{filename}\",\"identifier\":\"{identifier}\"}"
+    ].joined(separator: "\n")
 
     private let session: URLSession
 
@@ -65,6 +93,7 @@ final class MediaTransfer: ObservableObject {
         baseURLText = UserDefaults.standard.string(forKey: Self.baseURLKey) ?? Self.defaultBaseURL
         probePathsText = UserDefaults.standard.string(forKey: Self.probePathsKey) ?? Self.defaultProbePaths
         methodProbePathsText = UserDefaults.standard.string(forKey: Self.methodProbePathsKey) ?? Self.defaultMethodProbePaths
+        latestTemplateProbeText = UserDefaults.standard.string(forKey: Self.latestTemplateProbeKey) ?? Self.defaultLatestTemplateProbePaths
     }
 
     func refreshFileList() async {
@@ -305,6 +334,29 @@ final class MediaTransfer: ObservableObject {
         await runProbe(paths: expanded, title: "BFA7 Method Probe", statusPrefix: "Method probe")
     }
 
+    func runLatestTemplateProbe() async {
+        if files.isEmpty {
+            await refreshFileList()
+        }
+        guard let latest = files.first else {
+            status = "Нет fresh file для template probe"
+            return
+        }
+
+        let paths = latestTemplateProbeText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { expandTemplate($0, for: latest) }
+
+        guard !paths.isEmpty else {
+            status = "Добавь latest template paths"
+            return
+        }
+
+        await runProbe(paths: paths, title: "BFA7 Latest Template Probe", statusPrefix: "Template probe")
+    }
+
     private func runProbe(paths: [String], title: String, statusPrefix: String) async {
         isBusy = true
         status = "\(statusPrefix): \(paths.count) requests"
@@ -332,14 +384,18 @@ final class MediaTransfer: ObservableObject {
                 var request = URLRequest(url: url)
                 request.httpMethod = parsed.method
                 request.timeoutInterval = 6
-                if parsed.method == "POST" {
+                request.setValue("bytes=0-2047", forHTTPHeaderField: "Range")
+                if let body = parsed.body {
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = Data(body.utf8)
+                } else if parsed.method == "POST" {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = Data("{}".utf8)
                 }
                 let (data, response) = try await session.data(for: request)
                 let http = response as? HTTPURLResponse
                 results.append(BFA7WiFiProbeResult(
-                    path: "\(parsed.method) \(parsed.path)",
+                    path: parsed.label,
                     url: url.absoluteString,
                     statusCode: http?.statusCode,
                     mimeType: response.mimeType,
@@ -351,7 +407,7 @@ final class MediaTransfer: ObservableObject {
                 ))
             } catch {
                 results.append(BFA7WiFiProbeResult(
-                    path: "\(parsed.method) \(parsed.path)",
+                    path: parsed.label,
                     url: url.absoluteString,
                     statusCode: nil,
                     mimeType: nil,
@@ -370,13 +426,18 @@ final class MediaTransfer: ObservableObject {
         status = "\(statusPrefix): \(successCount)/\(results.count) ответили"
     }
 
-    private static func parseProbePath(_ raw: String) -> (method: String, path: String) {
+    private static func parseProbePath(_ raw: String) -> BFA7ProbeRequest {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = trimmed.split(separator: " ", maxSplits: 1).map(String.init)
+        let segments = trimmed.components(separatedBy: " | ")
+        let requestPart = segments.first ?? trimmed
+        let body = segments.dropFirst().joined(separator: " | ").trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = requestPart.split(separator: " ", maxSplits: 1).map(String.init)
         if parts.count == 2, ["GET", "HEAD", "POST", "OPTIONS"].contains(parts[0].uppercased()) {
-            return (parts[0].uppercased(), parts[1])
+            let method = parts[0].uppercased()
+            let label = body.isEmpty ? "\(method) \(parts[1])" : "\(method) \(parts[1]) | \(body)"
+            return BFA7ProbeRequest(method: method, path: parts[1], body: body.isEmpty ? nil : body, label: label)
         }
-        return ("GET", trimmed)
+        return BFA7ProbeRequest(method: "GET", path: requestPart, body: body.isEmpty ? nil : body, label: trimmed)
     }
 
     private func probePaths(for file: BFA7MediaFile) -> [String] {
@@ -403,8 +464,42 @@ final class MediaTransfer: ObservableObject {
             return URL(string: trimmedPath)
         }
         guard var components = URLComponents(string: baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
-        components.path = trimmedPath.hasPrefix("/") ? trimmedPath : "/\(trimmedPath)"
+        let split = trimmedPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let pathPart = split.first ?? trimmedPath
+        components.path = pathPart.hasPrefix("/") ? pathPart : "/\(pathPart)"
+        components.percentEncodedQuery = split.count > 1 ? split[1] : nil
         return components.url
+    }
+
+    private func expandTemplate(_ template: String, for file: BFA7MediaFile) -> String {
+        let remote = file.remotePath ?? file.filename
+        let remoteLeaf = remote.split(separator: "/").last.map(String.init) ?? remote
+        let remoteBase = URL(fileURLWithPath: remoteLeaf).deletingPathExtension().lastPathComponent
+        let filenameBase = URL(fileURLWithPath: file.filename).deletingPathExtension().lastPathComponent
+        let identifier: String
+        if URL(fileURLWithPath: remoteLeaf).pathExtension.isEmpty {
+            identifier = remoteLeaf + "." + (Self.fallbackExtension(for: file.kind) ?? "jpg")
+        } else {
+            identifier = remoteLeaf
+        }
+
+        let values = [
+            "{remote}": Self.percentEncode(remote),
+            "{remoteRaw}": remote,
+            "{remoteLeaf}": Self.percentEncode(remoteLeaf),
+            "{remoteLeafRaw}": remoteLeaf,
+            "{remoteBase}": Self.percentEncode(remoteBase),
+            "{filename}": Self.percentEncode(file.filename),
+            "{filenameRaw}": file.filename,
+            "{filenameBase}": Self.percentEncode(filenameBase),
+            "{identifier}": Self.percentEncode(identifier),
+            "{identifierRaw}": identifier,
+            "{id}": Self.percentEncode(file.id)
+        ]
+
+        return values.reduce(template) { partial, pair in
+            partial.replacingOccurrences(of: pair.key, with: pair.value)
+        }
     }
 
     private func downloadURLs(for file: BFA7MediaFile) -> [URL] {
@@ -486,6 +581,10 @@ final class MediaTransfer: ObservableObject {
 
     private static func firstBytesHex(_ data: Data) -> String {
         data.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+
+    private static func percentEncode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
     }
 
     private static func downloadFailureLine(url: URL, response: URLResponse?, data: Data, error: Error?) -> String {

@@ -177,3 +177,20 @@ Implementation note:
 - Capture now includes `Probe latest file URLs`, which refreshes `/v1/filelists`, takes the current first media entry, and probes its `remotePath`, extension fallbacks, and thumbnail candidates.
 - Capture also includes editable `Method probe paths` plus `Run method probe`, testing `GET`, `HEAD`, `POST {}`, and `OPTIONS` for each path.
 - This supports the three media routes: import-mode download, automatic latest-file fetch after capture/import, and live/alternate endpoint discovery.
+
+
+## 2026-09-21 Fresh photo endpoint probes
+
+Source: tester-pasted latest file and method probe reports generated around 16:24 local time.
+
+Observed:
+
+- `GET /v1/filelists` still returns a fresh JSON/plain list of current import-session photo entries.
+- Direct fresh-photo candidates for `filelists/LLHDR_..._4032x3024_5`, `.jpg`, `.heic`, `.jpeg`, and thumbnail variants all returned HTTP `404`.
+- `GET /v1/files` and `POST /v1/files` returned HTTP `405`; `OPTIONS /v1/files` returned HTTP `403` with `Invalid CORS request`.
+- `GET /v1/media` remained `404`; `POST /v1/filelists` was `405`; `OPTIONS /v1/filelists` was `403`.
+
+Interpretation:
+
+- The photo list is reliable, but the photo payload is probably behind a route or request shape we have not found yet.
+- The app now needs query-aware URL construction and a configurable latest-file template probe so we can test routes like `/v1/files?url={remote}` or `POST /v1/files | {json}` without shipping a new IPA for every hypothesis.
