@@ -192,6 +192,9 @@ final class GlassesTransport: NSObject, ObservableObject {
         lines.append("Capture burst summary:")
         lines.append(protocolLab.captureBurstReport(around: importExperimentMarkedAt))
         lines.append("")
+        lines.append("Replay candidates:")
+        lines.append(protocolLab.importReplayCandidateReport(around: importExperimentMarkedAt))
+        lines.append("")
         lines.append("Scoped events:")
 
         let scopedEvents = eventBus.events.filter { event in

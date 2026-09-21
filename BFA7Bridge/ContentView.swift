@@ -611,6 +611,25 @@ private struct ImportLabSection: View {
             .disabled(glasses.importExperimentStartedAt == nil)
 
             HStack {
+                Button("Copy import full HEX") {
+                    UIPasteboard.general.string = protocolLab.importFullHexReport(around: glasses.importExperimentMarkedAt)
+                }
+                .disabled(protocolLab.packets.isEmpty)
+
+                Spacer()
+
+                Button("Copy replay candidates") {
+                    UIPasteboard.general.string = protocolLab.importReplayCandidateReport(around: glasses.importExperimentMarkedAt)
+                }
+                .disabled(protocolLab.packets.isEmpty)
+            }
+
+            Button("Copy import JSON") {
+                UIPasteboard.general.string = protocolLab.importJSONExport(around: glasses.importExperimentMarkedAt)
+            }
+            .disabled(protocolLab.packets.isEmpty)
+
+            HStack {
                 Button("Run Wi-Fi probe") {
                     Task { await media.runWiFiProbe() }
                 }

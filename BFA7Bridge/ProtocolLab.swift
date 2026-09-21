@@ -350,6 +350,70 @@ final class ProtocolLab: ObservableObject {
     }
 
 
+
+    func importWindowEntries(around date: Date?) -> [BFA7TimelineEntry] {
+        guard let date else { return packets.suffix(120).map { BFA7TimelineEntry(relativeSeconds: 0, packet: $0) } }
+        return packets.compactMap { packet in
+            let relative = packet.date.timeIntervalSince(date)
+            guard relative >= -timelineWindowBefore && relative <= timelineWindowAfter else { return nil }
+            return BFA7TimelineEntry(relativeSeconds: relative, packet: packet)
+        }
+        .sorted { $0.relativeSeconds < $1.relativeSeconds }
+    }
+
+    func importJSONExport(around date: Date?) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let packets = importWindowEntries(around: date).map(\.packet)
+        let data = (try? encoder.encode(packets)) ?? Data("[]".utf8)
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    func importFullHexReport(around date: Date?) -> String {
+        var lines: [String] = []
+        lines.append("BFA7 Import Full HEX Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Note: these are observed incoming BLE notifications/reads in BFA7 Bridge, not proven Xiaomi-app writes.")
+        lines.append("")
+        for entry in importWindowEntries(around: date) {
+            lines.append("\(entry.relativeLabel) | \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
+            lines.append("HEX: \(entry.packet.hex)")
+            lines.append("ASCII: \(entry.packet.ascii)")
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    func importReplayCandidateReport(around date: Date?) -> String {
+        let entries = importWindowEntries(around: date)
+            .filter { entry in
+                entry.packet.characteristicUUID.localizedCaseInsensitiveContains("005E")
+                    && entry.packet.byteCount <= 96
+                    && entry.packet.looksLikeA5Frame
+            }
+
+        var lines: [String] = []
+        lines.append("BFA7 Import Replay Candidate Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Important: candidates below are incoming packets observed from glasses, not confirmed write commands. Replay only after separate approval and preferably one-by-one.")
+        lines.append("Target write characteristic if tested later: prefer FE95/005E, then FE95/005F.")
+        lines.append("")
+
+        if entries.isEmpty {
+            lines.append("No <=96B A5 candidates in import window.")
+        } else {
+            for entry in entries {
+                lines.append("\(entry.relativeLabel) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
+                lines.append(entry.packet.hex)
+                lines.append("")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     func activityReport(around date: Date?, label: String) -> String {
         let entries = timeline(around: date)
         var lines: [String] = []

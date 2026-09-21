@@ -159,3 +159,12 @@ Implementation note:
 - The flow is `Start import experiment` -> switch to Xiaomi app -> press Import -> return and `Mark Xiaomi Import press` -> accept Wi-Fi -> `Run Wi-Fi probe` -> copy import and probe reports.
 - The import report includes scoped BLE events, protocol activity grouped by characteristic, packet timeline, and capture-burst heuristics around the import mark.
 - This is intended to identify candidate BLE notifications/writes before attempting replay presets.
+
+
+## 2026-09-21 Import full HEX reports
+
+Implementation note:
+
+- Import Lab now provides `Copy import full HEX`, `Copy replay candidates`, and `Copy import JSON`.
+- Replay candidate reports are intentionally labeled as observed incoming BLE packets, not confirmed Xiaomi-app write commands.
+- These reports preserve complete packet hex for the 73B/75B import-adjacent payloads that were previously truncated in the event log.
