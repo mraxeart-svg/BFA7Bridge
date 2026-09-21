@@ -138,3 +138,14 @@ Implementation note:
 - Capture now includes an editable Wi-Fi Probe path list saved in `UserDefaults`, plus `Run probe` and `Copy probe report`.
 - Probe results capture URL, HTTP status, MIME, suggested filename, byte count, signature, short preview, and errors.
 - This is intended to reduce IPA churn: future endpoint experiments can be run from the installed app by editing paths on-device.
+
+
+## 2026-09-21 HTTP 404 download guard
+
+Tester screenshot showed a failed `/filelists/LLHDR...` request being saved as a tiny `.txt` "photo" because `URLSession.download` does not throw for HTTP 404.
+
+Implementation note:
+
+- Downloads now reject non-2xx HTTP statuses instead of saving error bodies as media.
+- Download attempts now try fallback extensions for extensionless remote paths, such as `.jpg`, `.heic`, and `.jpeg` for photo entries.
+- Failed download reports include every candidate URL plus HTTP status, MIME, byte count, signature, and body preview.
