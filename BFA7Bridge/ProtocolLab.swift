@@ -11,6 +11,7 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
     let ascii: String
     let firstBytes: String
     let looksLikeA5Frame: Bool
+    let frame: BFA7Frame?
 
     init(date: Date = Date(), serviceUUID: String, characteristicUUID: String, data: Data) {
         self.id = UUID()
@@ -22,12 +23,14 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
         self.ascii = data.bfa7AsciiPreview
         self.firstBytes = Data(data.prefix(8)).bfa7HexString
         self.looksLikeA5Frame = data.count >= 2 && data[data.startIndex] == 0xA5 && data[data.index(after: data.startIndex)] == 0xA5
+        self.frame = BFA7Frame(data: data)
     }
 
     var line: String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return "\(formatter.string(from: date)) | \(characteristicUUID) | \(byteCount) B | \(firstBytes) | A5=\(looksLikeA5Frame ? "yes" : "no")"
+        let frameSummary = frame?.summary ?? "raw"
+        return "\(formatter.string(from: date)) | \(characteristicUUID) | \(byteCount) B | \(firstBytes) | \(frameSummary)"
     }
 
     var csvLine: String {
@@ -38,6 +41,9 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
             "\(byteCount)",
             firstBytes,
             looksLikeA5Frame ? "true" : "false",
+            frame?.kind.rawValue ?? "",
+            frame?.sequenceText ?? "",
+            frame?.declaredLengthText ?? "",
             hex,
             ascii
         ].map(Self.csvEscape).joined(separator: ",")
@@ -49,8 +55,78 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
     }
 }
 
+
+enum BFA7FrameKind: String, Codable, Hashable {
+    case shortControl
+    case payloadStart
+    case payloadContinuation
+    case unknown
+}
+
+struct BFA7Frame: Codable, Hashable {
+    let kind: BFA7FrameKind
+    let sequence: Int?
+    let declaredLength: Int?
+    let opCode: Int?
+    let header: String
+
+    init?(data: Data) {
+        guard !data.isEmpty else { return nil }
+        let bytes = Array(data)
+        if bytes.count >= 2, bytes[0] == 0xA5, bytes[1] == 0xA5 {
+            sequence = bytes.count > 3 ? Int(bytes[3]) : nil
+            declaredLength = bytes.count > 5 ? Int(bytes[4]) | (Int(bytes[5]) << 8) : nil
+            opCode = bytes.count > 2 ? Int(bytes[2]) : nil
+            header = Data(bytes.prefix(min(bytes.count, 8))).bfa7HexString
+
+            if bytes.count == 8, bytes.count > 2, bytes[2] == 0x01 {
+                kind = .shortControl
+            } else if bytes.count > 2, bytes[2] == 0x03 {
+                kind = .payloadStart
+            } else {
+                kind = .unknown
+            }
+        } else {
+            sequence = nil
+            declaredLength = nil
+            opCode = nil
+            header = Data(bytes.prefix(min(bytes.count, 8))).bfa7HexString
+            kind = .payloadContinuation
+        }
+    }
+
+    var sequenceText: String {
+        guard let sequence else { return "" }
+        return String(format: "0x%02X", sequence)
+    }
+
+    var declaredLengthText: String {
+        guard let declaredLength else { return "" }
+        return "\(declaredLength)"
+    }
+
+    var summary: String {
+        var parts = ["kind=\(kind.rawValue)"]
+        if let opCode {
+            parts.append(String(format: "op=0x%02X", opCode))
+        }
+        if let sequence {
+            parts.append(String(format: "seq=0x%02X", sequence))
+        }
+        if let declaredLength {
+            parts.append("len=\(declaredLength)")
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
 private struct BFA7PacketSizeCount {
     let size: Int
+    let count: Int
+}
+
+private struct BFA7FrameKindCount {
+    let kind: BFA7FrameKind
     let count: Int
 }
 
@@ -120,7 +196,21 @@ final class ProtocolLab: ObservableObject {
         let sizeSummary = sortedSizeCounts.prefix(8).map { item in
             "\(item.size)B x\(item.count)"
         }.joined(separator: ", ")
-        return "packets=\(filtered.count), A5=\(a5), sizes=[\(sizeSummary)]"
+        let groupedKinds = Dictionary(grouping: filtered.compactMap(\.frame)) { frame in
+            frame.kind
+        }
+        let kindCounts = groupedKinds.map { key, value in
+            BFA7FrameKindCount(kind: key, count: value.count)
+        }
+        let kindSummary = kindCounts.sorted { lhs, rhs in
+            if lhs.count == rhs.count {
+                return lhs.kind.rawValue < rhs.kind.rawValue
+            }
+            return lhs.count > rhs.count
+        }.map { item in
+            "\(item.kind.rawValue) x\(item.count)"
+        }.joined(separator: ", ")
+        return "packets=\(filtered.count), A5=\(a5), sizes=[\(sizeSummary)], frames=[\(kindSummary)]"
     }
 
     var jsonExport: String {
@@ -132,8 +222,26 @@ final class ProtocolLab: ObservableObject {
     }
 
     var csvExport: String {
-        let header = "date,service_uuid,characteristic_uuid,byte_count,first_bytes,looks_like_a5,hex,ascii"
+        let header = "date,service_uuid,characteristic_uuid,byte_count,first_bytes,looks_like_a5,frame_kind,sequence,declared_length,hex,ascii"
         return ([header] + filteredPackets.map(\.csvLine)).joined(separator: "\n")
+    }
+
+    func buttonCandidateReport(around date: Date?) -> String {
+        let entries = timeline(around: date)
+        let controlFrames = entries.filter { entry in
+            entry.packet.frame?.kind == .shortControl
+        }
+        var lines: [String] = []
+        lines.append("BFA7 Button Candidate Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Short control frames are common keep-alive/control counters until proven otherwise.")
+        lines.append("")
+        for entry in controlFrames {
+            let frame = entry.packet.frame
+            lines.append("\(entry.relativeLabel) | \(entry.packet.characteristicUUID) | \(entry.packet.firstBytes) | \(frame?.summary ?? "raw")")
+        }
+        return lines.joined(separator: "\n")
     }
 
     func focusedReport(around date: Date?) -> String {

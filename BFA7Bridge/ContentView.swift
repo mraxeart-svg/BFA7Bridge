@@ -452,6 +452,11 @@ private struct ProtocolLabSection: View {
                 UIPasteboard.general.string = protocolLab.focusedReport(around: glasses.buttonExperimentMarkedAt)
             }
             .disabled(protocolLab.filteredPackets.isEmpty)
+
+            Button("Copy button candidates") {
+                UIPasteboard.general.string = protocolLab.buttonCandidateReport(around: glasses.buttonExperimentMarkedAt)
+            }
+            .disabled(protocolLab.filteredPackets.isEmpty)
         }
 
         Section("Button Timeline") {
@@ -469,9 +474,12 @@ private struct ProtocolLabSection: View {
                     }
                     Text(entry.packet.characteristicUUID)
                         .font(.caption2.monospaced())
-                    Text(entry.packet.firstBytes + (entry.packet.looksLikeA5Frame ? "  A5" : ""))
+                    Text(entry.packet.frame?.summary ?? (entry.packet.firstBytes + (entry.packet.looksLikeA5Frame ? "  A5" : "")))
                         .font(.caption2.monospaced())
                         .foregroundStyle(entry.packet.looksLikeA5Frame ? .primary : .secondary)
+                    Text(entry.packet.firstBytes)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
             }

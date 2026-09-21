@@ -35,6 +35,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     private var peripherals: [UUID: CBPeripheral] = [:]
     private var currentPeripheral: CBPeripheral?
     private var subscribedCharacteristics: Set<String> = []
+    private var writableCharacteristicKeys: Set<String> = []
     private var writableCharacteristicRefs: [CBCharacteristic] = []
     private let miBeaconService = CBUUID(string: "FE95")
 
@@ -56,6 +57,7 @@ final class GlassesTransport: NSObject, ObservableObject {
         notificationCount = 0
         writableCharacteristics.removeAll()
         writableCharacteristicRefs.removeAll()
+        writableCharacteristicKeys.removeAll()
         subscribedCharacteristics.removeAll()
         gattServices.removeAll()
         isScanning = true
@@ -200,12 +202,15 @@ final class GlassesTransport: NSObject, ObservableObject {
     }
 
     private func logValue(_ data: Data) -> String {
-        let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
-        let ascii = data.map { byte -> String in
+        let previewLimit = 32
+        let preview = Data(data.prefix(previewLimit))
+        let hex = preview.map { String(format: "%02X", $0) }.joined(separator: " ")
+        let suffix = data.count > previewLimit ? " ... +\(data.count - previewLimit) B" : ""
+        let ascii = preview.map { byte -> String in
             let value = Int(byte)
             return (32...126).contains(value) ? String(UnicodeScalar(value)!) : "."
         }.joined()
-        return "HEX=[\(hex)] ASCII=\"\(ascii)\""
+        return "\(data.count)B HEX=[\(hex)\(suffix)] ASCII=\"\(ascii)\""
     }
 
     private func subscribeIfSupported(_ characteristic: CBCharacteristic, peripheral: CBPeripheral) {
@@ -224,8 +229,12 @@ final class GlassesTransport: NSObject, ObservableObject {
         }
 
         if properties.contains(.write) || properties.contains(.writeWithoutResponse) {
-            writableCharacteristicRefs.append(characteristic)
-            writableCharacteristics = writableCharacteristicRefs.map { "\($0.service?.uuid.uuidString ?? "?")/\($0.uuid.uuidString)" }
+            let writableKey = "\(characteristic.service?.uuid.uuidString ?? "?")/\(characteristic.uuid.uuidString)"
+            if !writableCharacteristicKeys.contains(writableKey) {
+                writableCharacteristicKeys.insert(writableKey)
+                writableCharacteristicRefs.append(characteristic)
+                writableCharacteristics = writableCharacteristicRefs.map { "\($0.service?.uuid.uuidString ?? "?")/\($0.uuid.uuidString)" }
+            }
         }
     }
 
@@ -248,9 +257,16 @@ final class GlassesTransport: NSObject, ObservableObject {
 
     private func recordPossibleButtonEvent(characteristic: CBCharacteristic, data: Data) {
         guard data.count <= 16 else { return }
-        let title = "\(characteristic.uuid.uuidString): \(data.map { String(format: "%02X", $0) }.joined(separator: " "))"
+        let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        let title = "\(characteristic.uuid.uuidString): \(hex)"
+
+        if let frame = BFA7Frame(data: data), frame.kind == .shortControl {
+            lastButtonEvent = "Control counter: \(title)"
+            return
+        }
+
         lastButtonEvent = title
-        appendLog("Possible button/touch event", kind: .button, detail: title)
+        appendLog("Small packet candidate", kind: .button, detail: title)
     }
 
     private static func timestamp() -> String {
@@ -339,6 +355,7 @@ extension GlassesTransport: CBCentralManagerDelegate {
             notificationCount = 0
             writableCharacteristics.removeAll()
             writableCharacteristicRefs.removeAll()
+            writableCharacteristicKeys.removeAll()
             subscribedCharacteristics.removeAll()
             appendLog("Отключено: \(message)", kind: .connection)
         }
