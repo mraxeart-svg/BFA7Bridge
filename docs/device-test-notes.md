@@ -62,3 +62,20 @@ Interpretation:
 - The Windows DirectShow camera path does not currently port directly to iOS, even with USB attached. The iOS app cannot yet treat BFA7 as an AVFoundation camera.
 - The BFA7 voice path is confirmed on iOS: the glasses are available as both microphone and speaker through Bluetooth HFP.
 - Next implementation target: make Ask explicitly prefer the BFA7 audio route, provide a route report, test voice playback through the glasses, and continue media capture through BLE-trigger + Wi-Fi/AP file transfer.
+
+
+## 2026-09-21 BFA7 HFP route confirmed during recording
+
+Source: tester-pasted `BFA7 Audio Route Report` generated while recording.
+
+Observed:
+
+- Status was `Идёт запись`.
+- Current input was `Xiaomi AI Glasses BFA7 | BluetoothHFP | 04:34:C3:50:BF:A7-tsco`.
+- Current output was `Xiaomi AI Glasses BFA7 | BluetoothHFP | 04:34:C3:50:BF:A7-tsco`.
+- Available inputs were built-in iPhone microphone and BFA7 Bluetooth HFP.
+
+Interpretation:
+
+- iOS can use BFA7 as both push-to-talk microphone and voice-response speaker.
+- The next diagnostic build records file duration, file size, average level, and peak level after `Stop recording` so we can confirm the captured audio is non-empty and coming through the selected route.

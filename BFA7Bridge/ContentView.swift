@@ -393,6 +393,10 @@ private struct AskView: View {
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                    Text(voice.recordingStatus)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                     if let url = voice.lastRecordingURL {
                         Text(url.lastPathComponent)
                             .font(.caption2.monospaced())

@@ -6,11 +6,13 @@ import Combine
 final class VoiceIO: NSObject, ObservableObject {
     @Published private(set) var status = "Ожидание"
     @Published private(set) var routeStatus = "Audio route not checked"
+    @Published private(set) var recordingStatus = "Recording not tested"
     @Published private(set) var isRecording = false
     @Published private(set) var lastRecordingURL: URL?
 
     private let synthesizer = AVSpeechSynthesizer()
     private var recorder: AVAudioRecorder?
+    private var recordingStartedAt: Date?
 
     func prepareAudioSession() {
         do {
@@ -76,6 +78,7 @@ final class VoiceIO: NSObject, ObservableObject {
             "Generated: \(Date().ISO8601Format())",
             "Status: \(status)",
             "Route: \(routeStatus)",
+            "Recording: \(recordingStatus)",
             "",
             "Current inputs:",
             inputs.isEmpty ? "  none" : inputs.map { "  \($0)" }.joined(separator: "\n"),
@@ -106,9 +109,24 @@ final class VoiceIO: NSObject, ObservableObject {
 
     func stopRecording() {
         guard isRecording else { return }
+        let recorder = recorder
+        recorder?.updateMeters()
+        let averagePower = recorder?.averagePower(forChannel: 0)
+        let peakPower = recorder?.peakPower(forChannel: 0)
+        let url = recorder?.url
+        let startedAt = recordingStartedAt
+
         recorder?.stop()
-        recorder = nil
+        self.recorder = nil
+        recordingStartedAt = nil
         isRecording = false
+
+        updateRecordingStatus(
+            url: url,
+            startedAt: startedAt,
+            averagePower: averagePower,
+            peakPower: peakPower
+        )
         status = "Запись сохранена"
         refreshRouteStatus()
     }
@@ -142,14 +160,31 @@ final class VoiceIO: NSObject, ObservableObject {
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
             let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.isMeteringEnabled = true
             recorder.record()
             self.recorder = recorder
+            recordingStartedAt = Date()
             lastRecordingURL = url
+            recordingStatus = "Recording active on current route"
             isRecording = true
             status = "Идёт запись"
         } catch {
             status = "Ошибка записи: \(error.localizedDescription)"
         }
+    }
+
+    private func updateRecordingStatus(url: URL?, startedAt: Date?, averagePower: Float?, peakPower: Float?) {
+        guard let url else {
+            recordingStatus = "No recording URL"
+            return
+        }
+
+        let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+        let average = averagePower.map { String(format: "%.1f dB", $0) } ?? "n/a"
+        let peak = peakPower.map { String(format: "%.1f dB", $0) } ?? "n/a"
+        recordingStatus = "file=\(url.lastPathComponent), duration=\(String(format: "%.2fs", duration)), size=\(size)B, avg=\(average), peak=\(peak)"
     }
 
     private func recordingDirectory() throws -> URL {
