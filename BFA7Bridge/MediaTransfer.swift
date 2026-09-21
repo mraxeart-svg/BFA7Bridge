@@ -132,6 +132,61 @@ final class MediaTransfer: ObservableObject {
         }
     }
 
+
+    func quickRefreshFileList(timeout: TimeInterval = 3) async -> Bool {
+        guard let url = endpointURL(path: "/v1/filelists") else {
+            status = "Неверный URL"
+            return false
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = timeout
+            let (data, response) = try await session.data(for: request)
+
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                status = "Проверка списка: HTTP \(http.statusCode)"
+                lastTransferReport = Self.transferReport(
+                    title: "BFA7 File List Quick Check",
+                    url: url,
+                    response: response,
+                    byteCount: data.count,
+                    files: files,
+                    error: nil
+                )
+                return false
+            }
+
+            let object = try JSONSerialization.jsonObject(with: data)
+            let parsed = Self.extractFiles(from: object).sorted { lhs, rhs in
+                switch (lhs.createdAt, rhs.createdAt) {
+                case let (left?, right?): return left > right
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return lhs.filename > rhs.filename
+                }
+            }
+            files = parsed
+            status = "Найдено файлов: \(files.count)"
+            lastTransferReport = Self.transferReport(
+                title: "BFA7 File List Quick Check",
+                url: url,
+                response: response,
+                byteCount: data.count,
+                files: files,
+                error: nil
+            )
+            return true
+        } catch {
+            status = "Проверка списка: \(error.localizedDescription)"
+            lastTransferReport = Self.transferReport(title: "BFA7 File List Quick Check", url: url, response: nil, byteCount: 0, files: [], error: error)
+            return false
+        }
+    }
+
     func downloadLatest() async {
         if files.isEmpty {
             await refreshFileList()

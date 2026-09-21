@@ -295,3 +295,19 @@ Implementation note:
 - Split the APK-derived action into `Write APK only` and `Write APK + probe`.
 - `Write APK only` is disabled only by the explicit safety toggle, so candidate testing can continue even when media probing is busy.
 - `Write APK + probe` remains gated by `media.isBusy` because it starts an HTTP transfer/probe.
+
+
+## 2026-09-21 APK trigger auto scanner
+
+Rationale:
+
+- Manual candidate testing is too slow and easy to mis-click, especially when Wi-Fi probing makes probe buttons temporarily disabled.
+- The next experiment should rapidly test the APK-derived `CreateWifiAP` payload shape across likely write targets and `wifiType` values.
+
+Implementation note:
+
+- Import Lab now has an `Auto trigger scanner`.
+- Default targets: `FE95/005E` and `FE95/005F`.
+- Scan order per target: `wifiType` values `2, 3, 4, 1, 0`.
+- Each attempt writes `<seq> 00 02 01 <wifiType> 01`, increments `seq`, waits a configurable delay, then performs a quick `/v1/filelists` check with a short timeout.
+- Success means the BFA7 HTTP endpoint is reachable, even if the returned file list is empty. That proves Import/AP mode was started or already active.

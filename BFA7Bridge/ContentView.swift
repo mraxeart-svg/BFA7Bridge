@@ -625,6 +625,11 @@ private struct ImportLabSection: View {
     @State private var importTriggerEnabled = false
     @State private var createWifiAPSeq = "81"
     @State private var createWifiAPWifiType = 2
+    @State private var autoScanTargetsText = "FE95/005E\nFE95/005F"
+    @State private var autoScanDelaySeconds = 4.0
+    @State private var autoScanStatus = "Ожидание"
+    @State private var autoScanReport = ""
+    @State private var importAutoScanTask: Task<Void, Never>?
 
     var body: some View {
         Section("Import Lab") {
@@ -779,6 +784,47 @@ private struct ImportLabSection: View {
                 .disabled(!importTriggerEnabled || media.isBusy)
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Auto trigger scanner")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Targets", text: $autoScanTargetsText, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+
+                Stepper("Delay \(Int(autoScanDelaySeconds))s", value: $autoScanDelaySeconds, in: 2...10, step: 1)
+
+                HStack {
+                    Button("Start auto scan") {
+                        startImportAutoScan()
+                    }
+                    .disabled(!importTriggerEnabled || importAutoScanTask != nil)
+
+                    Spacer()
+
+                    Button("Stop scan") {
+                        stopImportAutoScan()
+                    }
+                    .disabled(importAutoScanTask == nil)
+                }
+
+                Text(autoScanStatus)
+                    .foregroundStyle(.secondary)
+
+                if !autoScanReport.isEmpty {
+                    Text(autoScanReport)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(12)
+                        .textSelection(.enabled)
+                }
+            }
+
             Text("Важно: это лаборатория для проверенных BLE-кандидатов. Наблюдаемые incoming A5-пакеты не считаются доказанными командами Xiaomi app.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -822,6 +868,101 @@ private struct ImportLabSection: View {
         let current = UInt8(normalizedHexByte(value) ?? "80", radix: 16) ?? 0x80
         let next = current == 0x7f ? UInt8(0x80) : current &+ 1
         return String(format: "%02X", next)
+    }
+
+    private func createWifiAPCandidateHex(seq: String, wifiType: Int) -> String {
+        let normalizedSeq = normalizedHexByte(seq) ?? "81"
+        let normalizedWifiType = String(format: "%02X", wifiType & 0xff)
+        return "\(normalizedSeq) 00 02 01 \(normalizedWifiType) 01"
+    }
+
+    private var autoScanTargets: [String] {
+        autoScanTargetsText
+            .split(whereSeparator: { $0.isNewline || $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func startImportAutoScan() {
+        let targets = autoScanTargets
+        guard !targets.isEmpty else {
+            autoScanStatus = "Нет target-характеристик"
+            return
+        }
+
+        let delay = autoScanDelaySeconds
+        let startSeq = UInt8(normalizedHexByte(createWifiAPSeq) ?? "81", radix: 16) ?? 0x81
+        let wifiTypes = [2, 3, 4, 1, 0]
+        autoScanStatus = "Сканирование..."
+        autoScanReport = "Start seq=\(String(format: "%02X", startSeq)), targets=\(targets.joined(separator: ", "))"
+
+        importAutoScanTask = Task {
+            var seq = startSeq
+            var lines: [String] = [autoScanReport]
+
+            for target in targets {
+                for wifiType in wifiTypes {
+                    if Task.isCancelled {
+                        await MainActor.run {
+                            autoScanStatus = "Остановлено"
+                            autoScanReport = lines.joined(separator: "\n")
+                            importAutoScanTask = nil
+                        }
+                        return
+                    }
+
+                    let seqHex = String(format: "%02X", seq)
+                    let hex = createWifiAPCandidateHex(seq: seqHex, wifiType: wifiType)
+                    lines.append("try target=\(target) seq=\(seqHex) wifiType=\(wifiType) hex=\(hex)")
+
+                    let wrote = await MainActor.run {
+                        importTriggerTarget = target
+                        importTriggerHex = hex
+                        createWifiAPSeq = seqHex
+                        autoScanStatus = "Пробую \(target), wifiType \(wifiType), seq \(seqHex)"
+                        autoScanReport = lines.joined(separator: "\n")
+                        return glasses.writeHexCommand(hex, target: target)
+                    }
+
+                    seq = seq == 0x7f ? 0x80 : seq &+ 1
+                    await MainActor.run { createWifiAPSeq = String(format: "%02X", seq) }
+
+                    guard wrote else {
+                        lines.append("write failed")
+                        continue
+                    }
+
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    let reachable = await media.quickRefreshFileList(timeout: 3)
+                    let mediaStatus = await MainActor.run { media.status }
+
+                    if reachable {
+                        lines.append("SUCCESS target=\(target) seq=\(seqHex) wifiType=\(wifiType): \(mediaStatus)")
+                        await MainActor.run {
+                            autoScanStatus = "Найден кандидат: \(target), wifiType \(wifiType), seq \(seqHex)"
+                            autoScanReport = lines.joined(separator: "\n")
+                            importAutoScanTask = nil
+                        }
+                        return
+                    }
+
+                    lines.append("no filelist: \(mediaStatus)")
+                    await MainActor.run { autoScanReport = lines.joined(separator: "\n") }
+                }
+            }
+
+            await MainActor.run {
+                autoScanStatus = "Сканирование завершено: совпадений нет"
+                autoScanReport = lines.joined(separator: "\n")
+                importAutoScanTask = nil
+            }
+        }
+    }
+
+    private func stopImportAutoScan() {
+        importAutoScanTask?.cancel()
+        importAutoScanTask = nil
+        autoScanStatus = "Остановлено"
     }
 }
 
