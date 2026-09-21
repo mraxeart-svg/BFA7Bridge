@@ -311,3 +311,21 @@ Implementation note:
 - Scan order per target: `wifiType` values `2, 3, 4, 1, 0`.
 - Each attempt writes `<seq> 00 02 01 <wifiType> 01`, increments `seq`, waits a configurable delay, then performs a quick `/v1/filelists` check with a short timeout.
 - Success means the BFA7 HTTP endpoint is reachable, even if the returned file list is empty. That proves Import/AP mode was started or already active.
+
+
+## 2026-09-21 Broad import trigger scanner
+
+Tester result: first automated scan over the APK-derived `apkSeq` payload on `FE95/005E` and `FE95/005F` finished with no matches.
+
+Interpretation:
+
+- The command may use a different writable characteristic. Known writable candidates include `AF00/AF07` and `FD2D/FF11`-`FF13`.
+- The APK-derived command may require a slightly different payload shape than `<seq> 00 02 01 <wifiType> 01`.
+- A higher-level channel/handshake may still be required, but a broader BLE write scan is the next cheapest experiment.
+
+Implementation note:
+
+- Auto scanner now defaults to `FE95/005E`, `FE95/005F`, `AF00/AF07`, `FD2D/FF11`, `FD2D/FF12`, and `FD2D/FF13`.
+- The UI can replace the target list with currently discovered writable characteristics.
+- Payload variants now include: `apkSeq`, `noSeq`, `seqNoTail`, `noSeqNoTail`, `seqTypeOnly`, and `noSeqTypeOnly`.
+- The scan report keeps the latest attempt lines visible while retaining full success context if a match is found.

@@ -625,7 +625,7 @@ private struct ImportLabSection: View {
     @State private var importTriggerEnabled = false
     @State private var createWifiAPSeq = "81"
     @State private var createWifiAPWifiType = 2
-    @State private var autoScanTargetsText = "FE95/005E\nFE95/005F"
+    @State private var autoScanTargetsText = "FE95/005E\nFE95/005F\nAF00/AF07\nFD2D/FF11\nFD2D/FF12\nFD2D/FF13"
     @State private var autoScanDelaySeconds = 4.0
     @State private var autoScanStatus = "Ожидание"
     @State private var autoScanReport = ""
@@ -792,12 +792,17 @@ private struct ImportLabSection: View {
                     .foregroundStyle(.secondary)
 
                 TextField("Targets", text: $autoScanTargetsText, axis: .vertical)
-                    .lineLimit(2...4)
+                    .lineLimit(2...7)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
 
-                Stepper("Delay \(Int(autoScanDelaySeconds))s", value: $autoScanDelaySeconds, in: 2...10, step: 1)
+                Button("Use discovered writable") {
+                    autoScanTargetsText = glasses.writableCharacteristics.joined(separator: "\n")
+                }
+                .disabled(glasses.writableCharacteristics.isEmpty)
+
+                Stepper("Delay \(Int(autoScanDelaySeconds))s", value: $autoScanDelaySeconds, in: 1...10, step: 1)
 
                 HStack {
                     Button("Start auto scan") {
@@ -883,6 +888,34 @@ private struct ImportLabSection: View {
             .filter { !$0.isEmpty }
     }
 
+    private struct ImportScanVariant {
+        let name: String
+        let includesSeq: Bool
+        let includesLeadingOne: Bool
+        let includesTrailingOne: Bool
+    }
+
+    private var importScanVariants: [ImportScanVariant] {
+        [
+            .init(name: "apkSeq", includesSeq: true, includesLeadingOne: true, includesTrailingOne: true),
+            .init(name: "noSeq", includesSeq: false, includesLeadingOne: true, includesTrailingOne: true),
+            .init(name: "seqNoTail", includesSeq: true, includesLeadingOne: true, includesTrailingOne: false),
+            .init(name: "noSeqNoTail", includesSeq: false, includesLeadingOne: true, includesTrailingOne: false),
+            .init(name: "seqTypeOnly", includesSeq: true, includesLeadingOne: false, includesTrailingOne: false),
+            .init(name: "noSeqTypeOnly", includesSeq: false, includesLeadingOne: false, includesTrailingOne: false)
+        ]
+    }
+
+    private func createWifiAPCandidateHex(seq: String, wifiType: Int, variant: ImportScanVariant) -> String {
+        var bytes: [String] = []
+        if variant.includesSeq { bytes.append(normalizedHexByte(seq) ?? "81") }
+        bytes.append(contentsOf: ["00", "02"])
+        if variant.includesLeadingOne { bytes.append("01") }
+        bytes.append(String(format: "%02X", wifiType & 0xff))
+        if variant.includesTrailingOne { bytes.append("01") }
+        return bytes.joined(separator: " ")
+    }
+
     private func startImportAutoScan() {
         let targets = autoScanTargets
         guard !targets.isEmpty else {
@@ -893,15 +926,17 @@ private struct ImportLabSection: View {
         let delay = autoScanDelaySeconds
         let startSeq = UInt8(normalizedHexByte(createWifiAPSeq) ?? "81", radix: 16) ?? 0x81
         let wifiTypes = [2, 3, 4, 1, 0]
+        let variants = importScanVariants
         autoScanStatus = "Сканирование..."
-        autoScanReport = "Start seq=\(String(format: "%02X", startSeq)), targets=\(targets.joined(separator: ", "))"
+        autoScanReport = "Start seq=\(String(format: "%02X", startSeq)), targets=\(targets.joined(separator: ", ")), variants=\(variants.map(\.name).joined(separator: ", "))"
 
         importAutoScanTask = Task {
             var seq = startSeq
             var lines: [String] = [autoScanReport]
 
             for target in targets {
-                for wifiType in wifiTypes {
+                for variant in variants {
+                    for wifiType in wifiTypes {
                     if Task.isCancelled {
                         await MainActor.run {
                             autoScanStatus = "Остановлено"
@@ -912,15 +947,15 @@ private struct ImportLabSection: View {
                     }
 
                     let seqHex = String(format: "%02X", seq)
-                    let hex = createWifiAPCandidateHex(seq: seqHex, wifiType: wifiType)
-                    lines.append("try target=\(target) seq=\(seqHex) wifiType=\(wifiType) hex=\(hex)")
+                    let hex = createWifiAPCandidateHex(seq: seqHex, wifiType: wifiType, variant: variant)
+                    lines.append("try target=\(target) variant=\(variant.name) seq=\(seqHex) wifiType=\(wifiType) hex=\(hex)")
 
                     let wrote = await MainActor.run {
                         importTriggerTarget = target
                         importTriggerHex = hex
                         createWifiAPSeq = seqHex
-                        autoScanStatus = "Пробую \(target), wifiType \(wifiType), seq \(seqHex)"
-                        autoScanReport = lines.joined(separator: "\n")
+                        autoScanStatus = "Пробую \(target), \(variant.name), wifiType \(wifiType), seq \(seqHex)"
+                        autoScanReport = lines.suffix(40).joined(separator: "\n")
                         return glasses.writeHexCommand(hex, target: target)
                     }
 
@@ -937,9 +972,9 @@ private struct ImportLabSection: View {
                     let mediaStatus = await MainActor.run { media.status }
 
                     if reachable {
-                        lines.append("SUCCESS target=\(target) seq=\(seqHex) wifiType=\(wifiType): \(mediaStatus)")
+                        lines.append("SUCCESS target=\(target) variant=\(variant.name) seq=\(seqHex) wifiType=\(wifiType): \(mediaStatus)")
                         await MainActor.run {
-                            autoScanStatus = "Найден кандидат: \(target), wifiType \(wifiType), seq \(seqHex)"
+                            autoScanStatus = "Найден кандидат: \(target), \(variant.name), wifiType \(wifiType), seq \(seqHex)"
                             autoScanReport = lines.joined(separator: "\n")
                             importAutoScanTask = nil
                         }
@@ -947,7 +982,8 @@ private struct ImportLabSection: View {
                     }
 
                     lines.append("no filelist: \(mediaStatus)")
-                    await MainActor.run { autoScanReport = lines.joined(separator: "\n") }
+                    await MainActor.run { autoScanReport = lines.suffix(40).joined(separator: "\n") }
+                    }
                 }
             }
 
