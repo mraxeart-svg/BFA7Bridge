@@ -194,3 +194,19 @@ Interpretation:
 
 - The photo list is reliable, but the photo payload is probably behind a route or request shape we have not found yet.
 - The app now needs query-aware URL construction and a configurable latest-file template probe so we can test routes like `/v1/files?url={remote}` or `POST /v1/files | {json}` without shipping a new IPA for every hypothesis.
+
+
+## 2026-09-21 Latest template probe result
+
+Source: tester-pasted `BFA7 Latest Template Probe` generated at `2026-09-21T13:34:10Z`.
+
+Observed:
+
+- Query forms such as `/v1/files?url=...`, `/v1/files?path=...`, `/v1/files?name=...`, and `/v1/files?identifier=...` returned HTTP `405` because GET is not supported on `/v1/files`.
+- `/v1/filelists/<LLHDR...>` and `/v1/filelists/<LLHDR...>.jpg` returned HTTP `200` but `0` bytes, so this route is likely a marker/prepare endpoint or an empty response, not the media payload.
+- `/v1/files/<LLHDR...>` and `/v1/files/<LLHDR...>.jpg` did not return `404`; the probe saw `The network connection was lost`. This is now the strongest download candidate because the lightweight probe uses a short timeout and a Range request.
+
+Implementation note:
+
+- Real downloads now prioritize `/v1/files/<remoteLeaf>` and `/v1/files/<identifier>` before the older direct `filelists/...` candidates.
+- Downloads reject empty successful responses so a `200`/`0 B` response cannot be saved as a fake media file.

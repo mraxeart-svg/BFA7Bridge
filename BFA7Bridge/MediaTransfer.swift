@@ -165,6 +165,16 @@ final class MediaTransfer: ObservableObject {
                     continue
                 }
 
+                if responseData.isEmpty {
+                    let error = NSError(
+                        domain: "BFA7Bridge.MediaTransfer",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Empty 2xx response body"]
+                    )
+                    failureLines.append(Self.downloadFailureLine(url: url, response: response, data: responseData, error: error))
+                    continue
+                }
+
                 let directory = try mediaDirectory()
                 let responseKind = BFA7MediaKind(mimeType: response.mimeType)
                 let detected = Self.detectMedia(at: temporaryURL, fallback: responseKind == .unknown ? file.kind : responseKind)
@@ -504,7 +514,21 @@ final class MediaTransfer: ObservableObject {
 
     private func downloadURLs(for file: BFA7MediaFile) -> [URL] {
         let rawPath = file.remotePath?.isEmpty == false ? file.remotePath! : "/v1/filelists/\(file.filename)"
-        var rawCandidates = [rawPath]
+        let rawLeaf = rawPath.split(separator: "/").last.map(String.init) ?? rawPath
+        let identifier: String
+        if URL(fileURLWithPath: rawLeaf).pathExtension.isEmpty {
+            identifier = rawLeaf + "." + (Self.fallbackExtension(for: file.kind) ?? "jpg")
+        } else {
+            identifier = rawLeaf
+        }
+
+        var rawCandidates = [
+            "/v1/files/\(rawLeaf)",
+            "/v1/files/\(identifier)",
+            "/v1/filelists/\(rawLeaf)",
+            "/v1/filelists/\(identifier)",
+            rawPath
+        ]
 
         if URL(fileURLWithPath: rawPath).pathExtension.isEmpty {
             for ext in fallbackExtensions(for: file.kind) {
