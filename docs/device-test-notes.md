@@ -245,3 +245,22 @@ Interpretation:
 - The BFA7 photo flow is now proven on iPhone: `/v1/filelists` -> LLHDR bundle manifest -> inner HEIC through `/v1/files/<inner-heic-name>`.
 - The successful inner file path is flat under `/v1/files/`, not nested as `/v1/files/<bundle>/<inner>`.
 - Next product step is reducing the manual flow to one action: download latest glasses media and prepare the Ask payload.
+
+
+## 2026-09-21 autonomy target: Xiaomi-free import mode
+
+Current state:
+
+- Media download is proven once Xiaomi Glasses App has started Import/AP mode.
+- Closing Xiaomi Glasses App during transfer does not immediately stop the glasses Wi-Fi AP, suggesting the official app mainly sends the start-import trigger and iOS Wi-Fi join request.
+- BFA7 Bridge can continue HTTP media transfer from the glasses while the AP remains up.
+
+Remaining blocker:
+
+- We do not yet know the BLE write command that starts Import/AP mode. Current Import Lab logs are BFA7 Bridge's incoming notifications from the glasses, not Xiaomi-app write traffic.
+
+Implementation note:
+
+- Lab now includes an `Import Trigger` write section with an explicit target characteristic and HEX candidate.
+- `Write + Wi-Fi probe` writes the candidate and then refreshes `/v1/filelists`, giving a quick success/failure signal.
+- Use this only with candidates captured from a real Xiaomi-app write source, such as Android Bluetooth HCI snoop, a BLE sniffer, or a Windows prototype log that includes outgoing writes.

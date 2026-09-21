@@ -221,22 +221,28 @@ final class GlassesTransport: NSObject, ObservableObject {
     }
 
     func writeHexCommand(_ hexString: String) {
+        writeHexCommand(hexString, target: nil)
+    }
+
+    @discardableResult
+    func writeHexCommand(_ hexString: String, target: String?) -> Bool {
         guard let peripheral = currentPeripheral else {
             appendLog("Нет активного BLE-подключения", kind: .error)
-            return
+            return false
         }
-        guard let characteristic = writableCharacteristicRefs.first else {
-            appendLog("Нет writable GATT-характеристики", kind: .error)
-            return
+        guard let characteristic = writableCharacteristic(matching: target) else {
+            appendLog("Writable GATT-характеристика не найдена", kind: .error, detail: target ?? "first writable")
+            return false
         }
         guard let data = Data(hexString: hexString) else {
             appendLog("HEX-команда не распознана", kind: .error, detail: hexString)
-            return
+            return false
         }
 
         let writeType: CBCharacteristicWriteType = characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
         peripheral.writeValue(data, for: characteristic, type: writeType)
-        appendLog("Write -> \(characteristic.uuid.uuidString) \(logValue(data))", kind: .value)
+        appendLog("Write -> \(characteristic.service?.uuid.uuidString ?? "?")/\(characteristic.uuid.uuidString) \(logValue(data))", kind: .value)
+        return true
     }
 
     func clearLog() {
@@ -270,6 +276,18 @@ final class GlassesTransport: NSObject, ObservableObject {
     private func appendLog(_ value: String, kind: BFA7EventKind = .diagnostic, detail: String = "") {
         eventBus.publish(kind: kind, title: value, detail: detail)
         log = eventBus.events.reversed().map(\.line)
+    }
+
+    private func writableCharacteristic(matching target: String?) -> CBCharacteristic? {
+        let trimmed = target?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return writableCharacteristicRefs.first }
+        let normalized = trimmed.uppercased()
+        return writableCharacteristicRefs.first { characteristic in
+            let service = characteristic.service?.uuid.uuidString.uppercased() ?? "?"
+            let uuid = characteristic.uuid.uuidString.uppercased()
+            let key = "\(service)/\(uuid)"
+            return key == normalized || key.contains(normalized) || uuid == normalized || uuid.contains(normalized)
+        }
     }
 
     private func logValue(_ data: Data) -> String {

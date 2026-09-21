@@ -620,6 +620,9 @@ private struct ImportLabSection: View {
     @EnvironmentObject private var glasses: GlassesTransport
     @EnvironmentObject private var protocolLab: ProtocolLab
     @EnvironmentObject private var media: MediaTransfer
+    @State private var importTriggerTarget = "FE95/005E"
+    @State private var importTriggerHex = ""
+    @State private var importTriggerEnabled = false
 
     var body: some View {
         Section("Import Lab") {
@@ -681,6 +684,44 @@ private struct ImportLabSection: View {
                 }
             }
 
+            Divider()
+
+            Toggle("Enable import trigger writes", isOn: $importTriggerEnabled)
+
+            TextField("Target characteristic", text: $importTriggerTarget)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            TextField("Import trigger HEX candidate", text: $importTriggerHex, axis: .vertical)
+                .lineLimit(2...5)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            HStack {
+                Button("Write trigger") {
+                    _ = glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget)
+                }
+                .disabled(!canWriteImportTrigger)
+
+                Spacer()
+
+                Button("Write + Wi-Fi probe") {
+                    Task {
+                        if glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget) {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            await media.refreshFileList()
+                        }
+                    }
+                }
+                .disabled(!canWriteImportTrigger || media.isBusy)
+            }
+
+            Text("Важно: это лаборатория для проверенных BLE-кандидатов. Наблюдаемые incoming A5-пакеты не считаются доказанными командами Xiaomi app.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy import report + Copy probe.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -691,6 +732,12 @@ private struct ImportLabSection: View {
                 .lineLimit(8)
                 .textSelection(.enabled)
         }
+    }
+
+    private var canWriteImportTrigger: Bool {
+        importTriggerEnabled &&
+        !importTriggerTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !importTriggerHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
