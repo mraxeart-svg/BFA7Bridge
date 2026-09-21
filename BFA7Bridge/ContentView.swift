@@ -360,6 +360,10 @@ private struct AskView: View {
                 }
 
                 Section("Voice") {
+                    Text("BFA7 audio route build")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+
                     HStack {
                         Button(voice.isRecording ? "Остановить запись" : "Push-to-talk") {
                             voice.isRecording ? voice.stopRecording() : voice.startRecording()
@@ -369,15 +373,15 @@ private struct AskView: View {
                     }
 
                     HStack {
-                        Button("Use BFA7 route") {
+                        Button("Выбрать звук BFA7") {
                             voice.prepareAudioSession()
                             voice.preferBFA7InputIfAvailable()
                         }
                         Spacer()
-                        Button("Test voice") { voice.speakRouteTest() }
+                        Button("Проверить голос") { voice.speakRouteTest() }
                     }
 
-                    Button("Copy audio route report") {
+                    Button("Скопировать аудио-отчёт") {
                         voice.refreshRouteStatus()
                         UIPasteboard.general.string = voice.audioRouteReport
                     }
