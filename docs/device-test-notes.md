@@ -110,3 +110,20 @@ Interpretation:
 
 - The free/local command intake path is now proven through iOS system speech recognition: BFA7 mic -> app recording -> transcription -> Ask command text.
 - The next UI refinement is a one-tap action that transcribes the latest recording and prepares the command/media payload for the free ChatGPT handoff.
+
+
+## 2026-09-21 BFA7 media download confirmed
+
+Source: tester screenshot after starting Import in the Xiaomi Glasses app, accepting the temporary `Xiaomi AI Glasses BFA7` Wi-Fi connection, then using BFA7 Bridge Capture.
+
+Observed:
+
+- `Download latest file` succeeded through `http://192.168.43.1:8080`.
+- Latest downloaded file displayed as `VID_20260919220615`, size `22.4 MB`, downloaded.
+- The file list included at least `VID_20260919220615` (`22.4 MB`) and `VID_20260919220316` (`445.4 MB`).
+
+Interpretation:
+
+- The media-transfer half is real when the glasses are put into Import mode by the official app.
+- BFA7 Bridge should now infer media type from filename/MIME/file signature and offer a share/export route for the downloaded file.
+- Remaining reverse-engineering target: identify the BLE command sequence that starts Import mode without opening the official Xiaomi Glasses app.

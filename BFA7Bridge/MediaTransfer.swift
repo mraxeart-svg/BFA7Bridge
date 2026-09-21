@@ -7,6 +7,7 @@ final class MediaTransfer: ObservableObject {
     @Published private(set) var files: [BFA7MediaFile] = []
     @Published private(set) var latestDownloaded: BFA7MediaFile?
     @Published private(set) var status = "Ожидание"
+    @Published private(set) var lastTransferReport = "Media transfer not tested"
     @Published private(set) var isBusy = false
 
     private let session: URLSession
@@ -25,7 +26,7 @@ final class MediaTransfer: ObservableObject {
         defer { isBusy = false }
 
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, response) = try await session.data(from: url)
             let object = try JSONSerialization.jsonObject(with: data)
             let parsed = Self.extractFiles(from: object)
             files = parsed.sorted { lhs, rhs in
@@ -37,8 +38,17 @@ final class MediaTransfer: ObservableObject {
                 }
             }
             status = "Найдено файлов: \(files.count)"
+            lastTransferReport = Self.transferReport(
+                title: "BFA7 File List",
+                url: url,
+                response: response,
+                byteCount: data.count,
+                files: files,
+                error: nil
+            )
         } catch {
             status = "Ошибка списка: \(error.localizedDescription)"
+            lastTransferReport = Self.transferReport(title: "BFA7 File List", url: url, response: nil, byteCount: 0, files: [], error: error)
         }
     }
 
@@ -63,19 +73,41 @@ final class MediaTransfer: ObservableObject {
         defer { isBusy = false }
 
         do {
-            let (temporaryURL, _) = try await session.download(from: url)
+            let (temporaryURL, response) = try await session.download(from: url)
             let directory = try mediaDirectory()
-            let destination = directory.appendingPathComponent(file.filename)
+            let responseKind = BFA7MediaKind(mimeType: response.mimeType)
+            let savedName = Self.filenameForDownloadedFile(file, response: response, responseKind: responseKind)
+            let destination = directory.appendingPathComponent(savedName)
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: temporaryURL, to: destination)
-            var saved = file
-            saved.localURL = destination
+
+            let finalKind = Self.kind(for: destination, fallback: responseKind == .unknown ? file.kind : responseKind)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: destination.path)
+            let actualSize = (attributes?[.size] as? NSNumber)?.intValue ?? file.sizeBytes
+            let saved = BFA7MediaFile(
+                id: file.id,
+                filename: destination.lastPathComponent,
+                kind: finalKind,
+                sizeBytes: actualSize,
+                createdAt: file.createdAt,
+                remotePath: file.remotePath,
+                localURL: destination
+            )
             latestDownloaded = saved
-            status = "Загружено: \(file.filename)"
+            status = "Загружено: \(saved.filename)"
+            lastTransferReport = Self.transferReport(
+                title: "BFA7 File Download",
+                url: url,
+                response: response,
+                byteCount: actualSize ?? 0,
+                files: [saved],
+                error: nil
+            )
         } catch {
             status = "Ошибка загрузки: \(error.localizedDescription)"
+            lastTransferReport = Self.transferReport(title: "BFA7 File Download", url: url, response: nil, byteCount: 0, files: [file], error: error)
         }
     }
 
@@ -108,6 +140,63 @@ final class MediaTransfer: ObservableObject {
         guard var components = URLComponents(string: baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
         components.path = path.hasPrefix("/") ? path : "/\(path)"
         return components.url
+    }
+
+    private static func filenameForDownloadedFile(_ file: BFA7MediaFile, response: URLResponse, responseKind: BFA7MediaKind) -> String {
+        let rawName = response.suggestedFilename?.isEmpty == false ? response.suggestedFilename! : file.filename
+        let name = URL(fileURLWithPath: rawName).lastPathComponent
+        guard URL(fileURLWithPath: name).pathExtension.isEmpty else { return name }
+
+        let kind = responseKind == .unknown ? file.kind : responseKind
+        switch kind {
+        case .photo:
+            return name + ".jpg"
+        case .video:
+            return name + ".mp4"
+        case .audio:
+            return name + ".m4a"
+        case .unknown:
+            return name
+        }
+    }
+
+    private static func kind(for url: URL, fallback: BFA7MediaKind) -> BFA7MediaKind {
+        if fallback != .unknown { return fallback }
+        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
+            return BFA7MediaKind(filename: url.lastPathComponent)
+        }
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return .photo }
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return .photo }
+        if data.count >= 12, let marker = String(data: data[4..<12], encoding: .ascii), marker.contains("ftyp") { return .video }
+        return BFA7MediaKind(filename: url.lastPathComponent)
+    }
+
+    private static func transferReport(title: String, url: URL, response: URLResponse?, byteCount: Int, files: [BFA7MediaFile], error: Error?) -> String {
+        var lines = [
+            title,
+            "Generated: \(Date().ISO8601Format())",
+            "URL: \(url.absoluteString)"
+        ]
+        if let http = response as? HTTPURLResponse {
+            lines.append("HTTP: \(http.statusCode)")
+        }
+        if let response {
+            lines.append("MIME: \(response.mimeType ?? "unknown")")
+            lines.append("Suggested filename: \(response.suggestedFilename ?? "none")")
+        }
+        lines.append("Bytes: \(byteCount)")
+        if let error {
+            lines.append("Error: \(error.localizedDescription)")
+        }
+        if files.isEmpty {
+            lines.append("Files: none")
+        } else {
+            lines.append("Files:")
+            for file in files {
+                lines.append("- \(file.filename) | kind=\(file.kind.rawValue) | size=\(file.displaySize) | remote=\(file.remotePath ?? "none") | local=\(file.localURL?.lastPathComponent ?? "none")")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func mediaDirectory() throws -> URL {

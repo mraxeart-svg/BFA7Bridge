@@ -262,6 +262,10 @@ private struct CaptureView: View {
                         media.useLocalPlaceholder()
                     }
 
+                    Button("Скопировать media report") {
+                        UIPasteboard.general.string = media.lastTransferReport
+                    }
+
                     Text(media.status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -270,6 +274,11 @@ private struct CaptureView: View {
                 if let latest = media.latestDownloaded {
                     Section("Latest") {
                         mediaRow(latest)
+                        if let url = latest.localURL {
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
+                            }
+                        }
                     }
                 }
 
@@ -440,6 +449,11 @@ private struct AskView: View {
                             Text("\(latest.kind.rawValue) • \(latest.displaySize)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                        if let url = latest.localURL {
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
+                            }
                         }
                     } else {
                         Text("Нет загруженного файла")

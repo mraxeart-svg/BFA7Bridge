@@ -61,11 +61,24 @@ enum BFA7MediaKind: String, Codable {
 
     init(filename: String) {
         let lowercased = filename.lowercased()
-        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".png") {
+        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".png") || lowercased.hasPrefix("img_") || lowercased.hasPrefix("pic_") {
             self = .photo
-        } else if lowercased.hasSuffix(".mp4") || lowercased.hasSuffix(".mov") {
+        } else if lowercased.hasSuffix(".mp4") || lowercased.hasSuffix(".mov") || lowercased.hasPrefix("vid_") {
             self = .video
-        } else if lowercased.hasSuffix(".m4a") || lowercased.hasSuffix(".wav") || lowercased.hasSuffix(".aac") {
+        } else if lowercased.hasSuffix(".m4a") || lowercased.hasSuffix(".wav") || lowercased.hasSuffix(".aac") || lowercased.hasPrefix("aud_") {
+            self = .audio
+        } else {
+            self = .unknown
+        }
+    }
+
+    init(mimeType: String?) {
+        let lowercased = mimeType?.lowercased() ?? ""
+        if lowercased.hasPrefix("image/") {
+            self = .photo
+        } else if lowercased.hasPrefix("video/") {
+            self = .video
+        } else if lowercased.hasPrefix("audio/") {
             self = .audio
         } else {
             self = .unknown
@@ -86,6 +99,8 @@ struct BFA7AskPayload: Identifiable, Hashable {
         ]
         if let media {
             lines.append("Media: \(media.filename)")
+            lines.append("Media kind: \(media.kind.rawValue)")
+            lines.append("Media size: \(media.displaySize)")
             if let localURL = media.localURL {
                 lines.append("Local file: \(localURL.lastPathComponent)")
             }
