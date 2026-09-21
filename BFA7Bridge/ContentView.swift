@@ -337,6 +337,7 @@ private struct CaptureView: View {
 private struct AskView: View {
     @EnvironmentObject private var media: MediaTransfer
     @EnvironmentObject private var voice: VoiceIO
+    @EnvironmentObject private var speech: SpeechTranscriber
     @EnvironmentObject private var commands: CommandSession
 
     var body: some View {
@@ -381,6 +382,15 @@ private struct AskView: View {
                         Button("Проверить голос") { voice.speakRouteTest() }
                     }
 
+                    Button("Распознать запись") {
+                        Task {
+                            if let transcript = await speech.transcribe(url: voice.lastRecordingURL) {
+                                commands.commandText = transcript
+                            }
+                        }
+                    }
+                    .disabled(voice.isRecording || voice.lastRecordingURL == nil)
+
                     Button("Скопировать аудио-отчёт") {
                         voice.refreshRouteStatus()
                         UIPasteboard.general.string = voice.audioRouteReport
@@ -389,6 +399,15 @@ private struct AskView: View {
                     Text(voice.status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(speech.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !speech.lastTranscript.isEmpty {
+                        Text(speech.lastTranscript)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                     Text(voice.routeStatus)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)

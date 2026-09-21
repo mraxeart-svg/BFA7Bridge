@@ -35,6 +35,8 @@
     <string>BFA7 Bridge подключается к локальному Wi-Fi интерфейсу очков для загрузки фото и видео.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>BFA7 Bridge использует микрофон для голосовых команд и взаимодействия с Xiaomi AI Glasses.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>BFA7 Bridge использует распознавание речи iOS, чтобы превратить голосовую команду с очков в текст запроса.</string>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>

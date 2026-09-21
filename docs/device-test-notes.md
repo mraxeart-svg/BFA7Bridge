@@ -79,3 +79,20 @@ Interpretation:
 
 - iOS can use BFA7 as both push-to-talk microphone and voice-response speaker.
 - The next diagnostic build records file duration, file size, average level, and peak level after `Stop recording` so we can confirm the captured audio is non-empty and coming through the selected route.
+
+
+## 2026-09-21 non-empty BFA7 recording confirmed
+
+Source: tester-pasted `BFA7 Audio Route Report` generated after stopping playback.
+
+Observed:
+
+- Current input and output were both `Xiaomi AI Glasses BFA7` over `BluetoothHFP`.
+- The app recorded `push-to-talk-1789990420.m4a` with duration `5.15s` and size `81631B`.
+- Metering showed signal in the file: average `-39.9 dB`, peak `-8.4 dB`.
+- Xiaomi Glasses app push notifications reported that the microphone was occupied / recording was active, which matches BFA7 Bridge owning the HFP microphone during push-to-talk.
+
+Interpretation:
+
+- The iOS push-to-talk path is not just selecting a route; it is capturing non-empty audio from the glasses.
+- Next implementation target is local/free command transcription through iOS Speech so the latest BFA7 recording can become the Ask command without using paid OpenAI API calls.
