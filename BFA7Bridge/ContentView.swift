@@ -262,6 +262,11 @@ private struct CaptureView: View {
                         media.useLocalPlaceholder()
                     }
 
+                    Button("Probe latest file URLs") {
+                        Task { await media.probeLatestFileURLs() }
+                    }
+                    .disabled(media.isBusy)
+
                     Button("Скопировать media report") {
                         UIPasteboard.general.string = media.lastTransferReport
                     }
@@ -290,6 +295,17 @@ private struct CaptureView: View {
                             UIPasteboard.general.string = media.lastProbeReport
                         }
                     }
+
+                    TextField("Method probe paths", text: $media.methodProbePathsText, axis: .vertical)
+                        .lineLimit(2...6)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+
+                    Button("Run method probe") {
+                        Task { await media.runMethodProbe() }
+                    }
+                    .disabled(media.isBusy)
 
                     if media.probeResults.isEmpty {
                         Text("Probe ещё не запускался")

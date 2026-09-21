@@ -168,3 +168,12 @@ Implementation note:
 - Import Lab now provides `Copy import full HEX`, `Copy replay candidates`, and `Copy import JSON`.
 - Replay candidate reports are intentionally labeled as observed incoming BLE packets, not confirmed Xiaomi-app write commands.
 - These reports preserve complete packet hex for the 73B/75B import-adjacent payloads that were previously truncated in the event log.
+
+
+## 2026-09-21 Latest file URL and method probes
+
+Implementation note:
+
+- Capture now includes `Probe latest file URLs`, which refreshes `/v1/filelists`, takes the current first media entry, and probes its `remotePath`, extension fallbacks, and thumbnail candidates.
+- Capture also includes editable `Method probe paths` plus `Run method probe`, testing `GET`, `HEAD`, `POST {}`, and `OPTIONS` for each path.
+- This supports the three media routes: import-mode download, automatic latest-file fetch after capture/import, and live/alternate endpoint discovery.

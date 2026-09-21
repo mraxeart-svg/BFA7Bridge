@@ -28,6 +28,9 @@ final class MediaTransfer: ObservableObject {
     @Published var probePathsText: String {
         didSet { UserDefaults.standard.set(probePathsText, forKey: Self.probePathsKey) }
     }
+    @Published var methodProbePathsText: String {
+        didSet { UserDefaults.standard.set(methodProbePathsText, forKey: Self.methodProbePathsKey) }
+    }
     @Published private(set) var files: [BFA7MediaFile] = []
     @Published private(set) var latestDownloaded: BFA7MediaFile?
     @Published private(set) var status = "Ожидание"
@@ -38,6 +41,7 @@ final class MediaTransfer: ObservableObject {
 
     private static let baseURLKey = "BFA7Bridge.media.baseURL"
     private static let probePathsKey = "BFA7Bridge.media.probePaths"
+    private static let methodProbePathsKey = "BFA7Bridge.media.methodProbePaths"
     private static let defaultBaseURL = "http://192.168.43.1:8080"
     private static let defaultProbePaths = [
         "/",
@@ -48,6 +52,11 @@ final class MediaTransfer: ObservableObject {
         "/dcim",
         "/DCIM"
     ].joined(separator: "\n")
+    private static let defaultMethodProbePaths = [
+        "/v1/files",
+        "/v1/media",
+        "/v1/filelists"
+    ].joined(separator: "\n")
 
     private let session: URLSession
 
@@ -55,6 +64,7 @@ final class MediaTransfer: ObservableObject {
         self.session = session
         baseURLText = UserDefaults.standard.string(forKey: Self.baseURLKey) ?? Self.defaultBaseURL
         probePathsText = UserDefaults.standard.string(forKey: Self.probePathsKey) ?? Self.defaultProbePaths
+        methodProbePathsText = UserDefaults.standard.string(forKey: Self.methodProbePathsKey) ?? Self.defaultMethodProbePaths
     }
 
     func refreshFileList() async {
@@ -261,9 +271,130 @@ final class MediaTransfer: ObservableObject {
         }
 
         probeResults = results
-        lastProbeReport = Self.probeReport(baseURL: baseURLText, results: results)
+        lastProbeReport = Self.probeReport(title: "BFA7 Wi-Fi Probe Report", baseURL: baseURLText, results: results)
         let successCount = results.filter { $0.statusCode.map { 200..<400 ~= $0 } == true }.count
         status = "Wi-Fi probe: \(successCount)/\(results.count) ответили"
+    }
+
+    func probeLatestFileURLs() async {
+        if files.isEmpty {
+            await refreshFileList()
+        }
+        guard let latest = files.first else {
+            status = "Нет fresh file для probe"
+            return
+        }
+
+        let paths = probePaths(for: latest)
+        await runProbe(paths: paths, title: "BFA7 Latest File Probe", statusPrefix: "Latest probe")
+    }
+
+    func runMethodProbe() async {
+        let paths = methodProbePathsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !paths.isEmpty else {
+            status = "Добавь method probe paths"
+            return
+        }
+
+        let methods = ["GET", "HEAD", "POST", "OPTIONS"]
+        let expanded = paths.flatMap { path in methods.map { method in "\(method) \(path)" } }
+        await runProbe(paths: expanded, title: "BFA7 Method Probe", statusPrefix: "Method probe")
+    }
+
+    private func runProbe(paths: [String], title: String, statusPrefix: String) async {
+        isBusy = true
+        status = "\(statusPrefix): \(paths.count) requests"
+        defer { isBusy = false }
+
+        var results: [BFA7WiFiProbeResult] = []
+        for rawPath in paths {
+            let parsed = Self.parseProbePath(rawPath)
+            guard let url = endpointURL(path: parsed.path) else {
+                results.append(BFA7WiFiProbeResult(
+                    path: rawPath,
+                    url: parsed.path,
+                    statusCode: nil,
+                    mimeType: nil,
+                    suggestedFilename: nil,
+                    byteCount: 0,
+                    signature: "invalid-url",
+                    preview: "",
+                    error: "Invalid URL"
+                ))
+                continue
+            }
+
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = parsed.method
+                request.timeoutInterval = 6
+                if parsed.method == "POST" {
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = Data("{}".utf8)
+                }
+                let (data, response) = try await session.data(for: request)
+                let http = response as? HTTPURLResponse
+                results.append(BFA7WiFiProbeResult(
+                    path: "\(parsed.method) \(parsed.path)",
+                    url: url.absoluteString,
+                    statusCode: http?.statusCode,
+                    mimeType: response.mimeType,
+                    suggestedFilename: response.suggestedFilename,
+                    byteCount: data.count,
+                    signature: Self.signature(for: data),
+                    preview: Self.preview(for: data),
+                    error: nil
+                ))
+            } catch {
+                results.append(BFA7WiFiProbeResult(
+                    path: "\(parsed.method) \(parsed.path)",
+                    url: url.absoluteString,
+                    statusCode: nil,
+                    mimeType: nil,
+                    suggestedFilename: nil,
+                    byteCount: 0,
+                    signature: "error",
+                    preview: "",
+                    error: error.localizedDescription
+                ))
+            }
+        }
+
+        probeResults = results
+        lastProbeReport = Self.probeReport(title: title, baseURL: baseURLText, results: results)
+        let successCount = results.filter { $0.statusCode.map { 200..<400 ~= $0 } == true }.count
+        status = "\(statusPrefix): \(successCount)/\(results.count) ответили"
+    }
+
+    private static func parseProbePath(_ raw: String) -> (method: String, path: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: " ", maxSplits: 1).map(String.init)
+        if parts.count == 2, ["GET", "HEAD", "POST", "OPTIONS"].contains(parts[0].uppercased()) {
+            return (parts[0].uppercased(), parts[1])
+        }
+        return ("GET", trimmed)
+    }
+
+    private func probePaths(for file: BFA7MediaFile) -> [String] {
+        var paths: [String] = []
+        if let remotePath = file.remotePath, !remotePath.isEmpty {
+            paths.append(remotePath)
+            if URL(fileURLWithPath: remotePath).pathExtension.isEmpty {
+                paths.append(contentsOf: fallbackExtensions(for: file.kind).map { remotePath + "." + $0 })
+            }
+        }
+
+        let base = file.remotePath?.split(separator: "/").last.map(String.init) ?? file.filename
+        let noExtension = URL(fileURLWithPath: base).deletingPathExtension().lastPathComponent
+        let thumbnailNames = [base, noExtension + ".jpg", file.filename + ".jpg"]
+        paths.append(contentsOf: thumbnailNames.map { "thumbnail/" + $0 })
+
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 
     private func endpointURL(path: String) -> URL? {
@@ -400,9 +531,9 @@ final class MediaTransfer: ObservableObject {
         return firstBytesHex(data)
     }
 
-    private static func probeReport(baseURL: String, results: [BFA7WiFiProbeResult]) -> String {
+    private static func probeReport(title: String, baseURL: String, results: [BFA7WiFiProbeResult]) -> String {
         var lines = [
-            "BFA7 Wi-Fi Probe Report",
+            title,
             "Generated: \(Date().ISO8601Format())",
             "Base URL: \(baseURL)",
             "Results: \(results.count)",
