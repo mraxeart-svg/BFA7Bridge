@@ -214,10 +214,31 @@ private struct DeviceView: View {
 
 private struct CaptureView: View {
     @EnvironmentObject private var media: MediaTransfer
+    @EnvironmentObject private var systemCapture: SystemCaptureProbe
 
     var body: some View {
         NavigationStack {
             List {
+                Section("System Capture") {
+                    HStack {
+                        Button("Refresh devices") {
+                            systemCapture.refresh()
+                        }
+                        Spacer()
+                        Button("Request access") {
+                            Task { await systemCapture.requestPermissionsAndRefresh() }
+                        }
+                    }
+
+                    Text(systemCapture.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    captureItems("Video", systemCapture.videoDevices)
+                    captureItems("Audio input", systemCapture.audioInputs)
+                    captureItems("Audio output", systemCapture.audioRouteOutputs)
+                }
+
                 Section("Wi-Fi transfer") {
                     TextField("Base URL", text: $media.baseURLText)
                         .keyboardType(.URL)
@@ -267,6 +288,34 @@ private struct CaptureView: View {
                 }
             }
             .navigationTitle("Capture")
+            .onAppear {
+                systemCapture.refresh()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func captureItems(_ title: String, _ items: [BFA7SystemCaptureItem]) -> some View {
+        if !items.isEmpty {
+            DisclosureGroup(title) {
+                ForEach(items) { item in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(item.name)
+                            Spacer()
+                            if item.isBFA7Candidate {
+                                Text("BFA7?")
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                        Text(item.detail)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 

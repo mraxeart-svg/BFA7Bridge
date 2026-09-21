@@ -8,6 +8,7 @@ BFA7 Bridge is now structured around the free-first plan:
 
 - `GlassesTransport`: BLE scan/connect, GATT explorer, notifications, diagnostic logging, Button Experiment reports, and opt-in HEX command writes.
 - `MediaTransfer`: local Wi-Fi/AP media listing and download through the experimental `/v1/filelists` flow.
+- `SystemCaptureProbe`: checks whether iOS exposes BFA7 as a system camera/microphone/audio route, based on the Windows DirectShow/sounddevice prototype.
 - `CommandSession`: combines a command such as `Опиши что передо мной?` with the latest captured media.
 - `AIProvider`: keeps paid OpenAI API disabled and exposes a free ChatGPT handoff feasibility gate.
 - `VoiceIO`: push-to-talk audio recording plus Russian voice playback over the active iOS audio route.
@@ -29,4 +30,4 @@ This build intentionally does not call the OpenAI API. The free ChatGPT path cur
 6. Use **Capture** to call `/v1/filelists` and download the latest photo/video.
 7. Use **Ask** to prepare `Опиши что передо мной?` with the latest media and run the free gate.
 
-See `docs/chat-context.md` for the preserved reverse-engineering notes from prior ChatGPT sessions, and `docs/device-test-notes.md` for findings from real-device diagnostics.
+See `docs/chat-context.md` for the preserved reverse-engineering notes from prior ChatGPT sessions, `docs/device-test-notes.md` for findings from real-device diagnostics, and `docs/windows-prototype-analysis.md` for the Windows prototype import analysis.

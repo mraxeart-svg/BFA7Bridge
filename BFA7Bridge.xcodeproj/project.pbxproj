@@ -21,6 +21,7 @@
 		AA000000000000000000001C /* BFA7AppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002C /* BFA7AppIntents.swift */; };
 		AA000000000000000000001D /* ProtocolLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002D /* ProtocolLab.swift */; };
 		AA000000000000000000001E /* WiFiImportLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002E /* WiFiImportLab.swift */; };
+		AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002F /* SystemCaptureProbe.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +40,7 @@
 		AA000000000000000000002C /* BFA7AppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7AppIntents.swift; sourceTree = "<group>"; };
 		AA000000000000000000002D /* ProtocolLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolLab.swift; sourceTree = "<group>"; };
 		AA000000000000000000002E /* WiFiImportLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiImportLab.swift; sourceTree = "<group>"; };
+		AA000000000000000000002F /* SystemCaptureProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCaptureProbe.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +78,7 @@
 				AA000000000000000000002C /* BFA7AppIntents.swift */,
 				AA000000000000000000002D /* ProtocolLab.swift */,
 				AA000000000000000000002E /* WiFiImportLab.swift */,
+				AA000000000000000000002F /* SystemCaptureProbe.swift */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
 			path = BFA7Bridge;
@@ -164,6 +167,7 @@
 				AA000000000000000000001C /* BFA7AppIntents.swift in Sources */,
 				AA000000000000000000001D /* ProtocolLab.swift in Sources */,
 				AA000000000000000000001E /* WiFiImportLab.swift in Sources */,
+				AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

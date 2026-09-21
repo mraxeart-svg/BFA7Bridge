@@ -6,6 +6,7 @@ struct BFA7BridgeApp: App {
     @StateObject private var media = MediaTransfer()
     @StateObject private var wifiImportLab = WiFiImportLab()
     @StateObject private var voice = VoiceIO()
+    @StateObject private var systemCapture = SystemCaptureProbe()
     @StateObject private var commands = CommandSession()
     @StateObject private var sessions = BFA7SessionStore()
 
@@ -17,6 +18,7 @@ struct BFA7BridgeApp: App {
                 .environmentObject(glasses.protocolLab)
                 .environmentObject(wifiImportLab)
                 .environmentObject(voice)
+                .environmentObject(systemCapture)
                 .environmentObject(commands)
                 .environmentObject(sessions)
         }
