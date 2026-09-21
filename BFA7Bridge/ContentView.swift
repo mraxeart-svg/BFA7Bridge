@@ -431,6 +431,14 @@ private struct AskView: View {
                 Section("Command") {
                     TextField("Команда", text: $commands.commandText, axis: .vertical)
                         .lineLimit(2...4)
+                    Button("Скачать с очков и подготовить") {
+                        Task {
+                            await media.downloadLatest()
+                            commands.preparePayload(media: media.latestDownloaded)
+                        }
+                    }
+                    .disabled(media.isBusy)
+
                     Button("Подготовить запрос") {
                         commands.preparePayload(media: media.latestDownloaded)
                     }

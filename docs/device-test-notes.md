@@ -226,3 +226,22 @@ Interpretation:
 
 - BFA7 photo entries from `/v1/filelists` are folders/bundles. Downloading `/v1/filelists/<LLHDR...>` yields the bundle manifest.
 - The app should treat this manifest as an intermediate response, choose nested media files, and then download the inner HEIC payload candidates.
+
+
+## 2026-09-21 LLHDR HEIC download confirmed
+
+Source: tester-pasted `BFA7 File Download` generated at `2026-09-21T13:58:40Z`.
+
+Confirmed working endpoint:
+
+- `GET /v1/files/LLHDR_20260921162200811_4032x3024_5-ARCLLHDR_20260921162200811_4032x3024_ev0_4.heic`
+- HTTP `200`
+- MIME `image/heic`
+- signature `ftypheic`
+- downloaded size `7,786,908` bytes (`7.8 MB`)
+
+Interpretation:
+
+- The BFA7 photo flow is now proven on iPhone: `/v1/filelists` -> LLHDR bundle manifest -> inner HEIC through `/v1/files/<inner-heic-name>`.
+- The successful inner file path is flat under `/v1/files/`, not nested as `/v1/files/<bundle>/<inner>`.
+- Next product step is reducing the manual flow to one action: download latest glasses media and prepare the Ask payload.
