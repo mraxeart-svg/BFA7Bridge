@@ -44,3 +44,21 @@ Interpretation:
 - The physical camera button probably does not emit a single obvious BLE button event on `005E`. Instead, it appears to trigger a capture/media payload burst within roughly 250ms.
 - For the next build, Protocol Lab should detect and summarize capture-sized bursts around the manual mark. This gives us a better reverse-engineering target than treating every short `A5 A5 01 NN` frame as a button event.
 - Next test target: copy `Capture Burst Report`, `Focused Report`, and JSON/CSV only if we need full payload reconstruction.
+
+
+## 2026-09-21 iOS System Capture test with USB/Bluetooth
+
+Source: tester screenshots from the iPhone app Capture -> System Capture while BFA7 was connected by USB and Bluetooth.
+
+Observed:
+
+- iOS video device list showed only built-in iPhone cameras: back, front, ultra wide, telephoto, dual, dual wide, and triple cameras.
+- No `Xiaomi AI Glasses BFA7` or external video camera appeared in AVFoundation.
+- Audio input showed `Xiaomi AI Glasses BFA7` with port type `BluetoothHFP`.
+- Audio output also showed `Xiaomi AI Glasses BFA7` with port type `BluetoothHFP`.
+
+Interpretation:
+
+- The Windows DirectShow camera path does not currently port directly to iOS, even with USB attached. The iOS app cannot yet treat BFA7 as an AVFoundation camera.
+- The BFA7 voice path is confirmed on iOS: the glasses are available as both microphone and speaker through Bluetooth HFP.
+- Next implementation target: make Ask explicitly prefer the BFA7 audio route, provide a route report, test voice playback through the glasses, and continue media capture through BLE-trigger + Wi-Fi/AP file transfer.

@@ -5,6 +5,7 @@ import Combine
 @MainActor
 final class VoiceIO: NSObject, ObservableObject {
     @Published private(set) var status = "Ожидание"
+    @Published private(set) var routeStatus = "Audio route not checked"
     @Published private(set) var isRecording = false
     @Published private(set) var lastRecordingURL: URL?
 
@@ -14,12 +15,77 @@ final class VoiceIO: NSObject, ObservableObject {
     func prepareAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
             try session.setActive(true)
+            preferBFA7InputIfAvailable()
+            refreshRouteStatus()
             status = "Аудио готово"
         } catch {
             status = "Ошибка аудио: \(error.localizedDescription)"
+            refreshRouteStatus()
         }
+    }
+
+    func refreshRouteStatus() {
+        let session = AVAudioSession.sharedInstance()
+        let inputs = session.availableInputs ?? []
+        let inputSummary = inputs.map { input in
+            "\(input.portName) [\(input.portType.rawValue)]"
+        }.joined(separator: ", ")
+        let outputs = session.currentRoute.outputs.map { output in
+            "\(output.portName) [\(output.portType.rawValue)]"
+        }.joined(separator: ", ")
+        let currentInputs = session.currentRoute.inputs.map { input in
+            "\(input.portName) [\(input.portType.rawValue)]"
+        }.joined(separator: ", ")
+
+        routeStatus = "inputs: \(currentInputs.isEmpty ? "none" : currentInputs); outputs: \(outputs.isEmpty ? "none" : outputs); available: \(inputSummary.isEmpty ? "none" : inputSummary)"
+    }
+
+    func preferBFA7InputIfAvailable() {
+        let session = AVAudioSession.sharedInstance()
+        guard let input = session.availableInputs?.first(where: { port in
+            let name = port.portName.lowercased()
+            return name.contains("bfa7") || name.contains("xiaomi") || name.contains("ai glasses")
+        }) else {
+            refreshRouteStatus()
+            return
+        }
+
+        do {
+            try session.setPreferredInput(input)
+            routeStatus = "Preferred input: \(input.portName) [\(input.portType.rawValue)]"
+            refreshRouteStatus()
+        } catch {
+            status = "Не удалось выбрать BFA7 mic: \(error.localizedDescription)"
+            refreshRouteStatus()
+        }
+    }
+
+    func speakRouteTest() {
+        speak("Проверка связи. Голосовой ответ идет через Xiaomi AI Glasses BFA7, если они выбраны как аудио маршрут.")
+    }
+
+    var audioRouteReport: String {
+        let session = AVAudioSession.sharedInstance()
+        let inputs = session.currentRoute.inputs.map { "\($0.portName) | \($0.portType.rawValue) | \($0.uid)" }
+        let outputs = session.currentRoute.outputs.map { "\($0.portName) | \($0.portType.rawValue) | \($0.uid)" }
+        let available = (session.availableInputs ?? []).map { "\($0.portName) | \($0.portType.rawValue) | \($0.uid)" }
+        return ([
+            "BFA7 Audio Route Report",
+            "Generated: \(Date().ISO8601Format())",
+            "Status: \(status)",
+            "Route: \(routeStatus)",
+            "",
+            "Current inputs:",
+            inputs.isEmpty ? "  none" : inputs.map { "  \($0)" }.joined(separator: "\n"),
+            "",
+            "Current outputs:",
+            outputs.isEmpty ? "  none" : outputs.map { "  \($0)" }.joined(separator: "\n"),
+            "",
+            "Available inputs:",
+            available.isEmpty ? "  none" : available.map { "  \($0)" }.joined(separator: "\n")
+        ]).joined(separator: "\n")
     }
 
     func startRecording() {
@@ -44,6 +110,7 @@ final class VoiceIO: NSObject, ObservableObject {
         recorder = nil
         isRecording = false
         status = "Запись сохранена"
+        refreshRouteStatus()
     }
 
     func speak(_ text: String) {
@@ -56,6 +123,7 @@ final class VoiceIO: NSObject, ObservableObject {
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         synthesizer.speak(utterance)
         status = "Голосовой ответ воспроизводится"
+        refreshRouteStatus()
     }
 
     func stopSpeaking() {

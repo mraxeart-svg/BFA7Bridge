@@ -367,9 +367,28 @@ private struct AskView: View {
                         Spacer()
                         Button("Stop voice") { voice.stopSpeaking() }
                     }
+
+                    HStack {
+                        Button("Use BFA7 route") {
+                            voice.prepareAudioSession()
+                            voice.preferBFA7InputIfAvailable()
+                        }
+                        Spacer()
+                        Button("Test voice") { voice.speakRouteTest() }
+                    }
+
+                    Button("Copy audio route report") {
+                        voice.refreshRouteStatus()
+                        UIPasteboard.general.string = voice.audioRouteReport
+                    }
+
                     Text(voice.status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(voice.routeStatus)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                     if let url = voice.lastRecordingURL {
                         Text(url.lastPathComponent)
                             .font(.caption2.monospaced())
