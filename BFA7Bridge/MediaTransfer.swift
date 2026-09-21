@@ -154,8 +154,15 @@ final class MediaTransfer: ObservableObject {
         defer { isBusy = false }
 
         var failureLines: [String] = []
+        var urlQueue = candidates
+        var attempted = Set<String>()
+        var index = 0
 
-        for url in candidates {
+        while index < urlQueue.count {
+            let url = urlQueue[index]
+            index += 1
+            guard attempted.insert(url.absoluteString).inserted else { continue }
+
             do {
                 let (temporaryURL, response) = try await session.download(from: url)
                 let responseData = (try? Data(contentsOf: temporaryURL, options: [.mappedIfSafe])) ?? Data()
@@ -172,6 +179,22 @@ final class MediaTransfer: ObservableObject {
                         userInfo: [NSLocalizedDescriptionKey: "Empty 2xx response body"]
                     )
                     failureLines.append(Self.downloadFailureLine(url: url, response: response, data: responseData, error: error))
+                    continue
+                }
+
+                if let bundleFiles = Self.extractBundleFiles(from: responseData), !bundleFiles.isEmpty {
+                    let nestedURLs = bundleDownloadURLs(parent: file, manifestURL: url, bundleFiles: bundleFiles)
+                    urlQueue.append(contentsOf: nestedURLs.filter { !attempted.contains($0.absoluteString) })
+                    failureLines.append(Self.downloadFailureLine(
+                        url: url,
+                        response: response,
+                        data: responseData,
+                        error: NSError(
+                            domain: "BFA7Bridge.MediaTransfer",
+                            code: -2,
+                            userInfo: [NSLocalizedDescriptionKey: "Bundle manifest; queued \(nestedURLs.count) nested media candidates"]
+                        )
+                    ))
                     continue
                 }
 
@@ -550,6 +573,34 @@ final class MediaTransfer: ObservableObject {
         }
     }
 
+    private func bundleDownloadURLs(parent: BFA7MediaFile, manifestURL: URL, bundleFiles: [BFA7MediaFile]) -> [URL] {
+        let rawPath = parent.remotePath?.isEmpty == false ? parent.remotePath! : manifestURL.lastPathComponent
+        let folderLeaf = rawPath.split(separator: "/").last.map(String.init) ?? manifestURL.lastPathComponent
+        let sorted = bundleFiles.sorted { lhs, rhs in
+            let lhsMedia = lhs.kind != .unknown
+            let rhsMedia = rhs.kind != .unknown
+            if lhsMedia != rhsMedia { return lhsMedia && !rhsMedia }
+            return (lhs.sizeBytes ?? 0) > (rhs.sizeBytes ?? 0)
+        }
+
+        var rawCandidates: [String] = []
+        for child in sorted {
+            let childPath = child.remotePath ?? child.filename
+            rawCandidates.append("/v1/files/\(folderLeaf)/\(childPath)")
+            rawCandidates.append("/v1/filelists/\(folderLeaf)/\(childPath)")
+            rawCandidates.append("/v1/files/\(childPath)")
+            rawCandidates.append("/v1/filelists/\(childPath)")
+            rawCandidates.append("filelists/\(folderLeaf)/\(childPath)")
+        }
+
+        var seen = Set<String>()
+        return rawCandidates.compactMap { raw in
+            guard let url = endpointURL(path: raw) else { return nil }
+            guard seen.insert(url.absoluteString).inserted else { return nil }
+            return url
+        }
+    }
+
     private func fallbackExtensions(for kind: BFA7MediaKind) -> [String] {
         switch kind {
         case .photo: return ["jpg", "heic", "jpeg"]
@@ -714,6 +765,16 @@ final class MediaTransfer: ObservableObject {
         let directory = documents.appendingPathComponent("BFA7BridgeMedia", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    private static func extractBundleFiles(from data: Data) -> [BFA7MediaFile]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        let files = extractFiles(from: object)
+        guard !files.isEmpty else { return nil }
+        let mediaFiles = files.filter { file in
+            file.kind != .unknown || file.filename.lowercased().hasSuffix(".heic") || file.filename.lowercased().hasSuffix(".heif")
+        }
+        return mediaFiles.isEmpty ? files : mediaFiles
     }
 
     private static func extractFiles(from object: Any) -> [BFA7MediaFile] {

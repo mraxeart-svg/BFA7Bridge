@@ -61,7 +61,7 @@ enum BFA7MediaKind: String, Codable {
 
     init(filename: String) {
         let lowercased = filename.lowercased()
-        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".png") || lowercased.hasPrefix("img_") || lowercased.hasPrefix("pic_") {
+        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".png") || lowercased.hasSuffix(".heic") || lowercased.hasSuffix(".heif") || lowercased.hasPrefix("img_") || lowercased.hasPrefix("pic_") {
             self = .photo
         } else if lowercased.hasSuffix(".mp4") || lowercased.hasSuffix(".mov") || lowercased.hasPrefix("vid_") {
             self = .video

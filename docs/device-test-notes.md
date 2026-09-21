@@ -210,3 +210,19 @@ Implementation note:
 
 - Real downloads now prioritize `/v1/files/<remoteLeaf>` and `/v1/files/<identifier>` before the older direct `filelists/...` candidates.
 - Downloads reject empty successful responses so a `200`/`0 B` response cannot be saved as a fake media file.
+
+
+## 2026-09-21 LLHDR bundle manifest decoded
+
+Source: tester shared `LLHDR_20260921163246083_4032x3024_5.txt` from Yandex Disk.
+
+Observed:
+
+- The downloaded `.txt` is valid JSON, not a photo payload.
+- It contains the contents of an LLHDR bundle folder: metadata/exif/icc sidecars and several `.heic` image parts.
+- Largest media entries include HEIC files around `7.4 MB`, `7.39 MB`, `7.41 MB`, `5.0 MB`, and `2.79 MB`.
+
+Interpretation:
+
+- BFA7 photo entries from `/v1/filelists` are folders/bundles. Downloading `/v1/filelists/<LLHDR...>` yields the bundle manifest.
+- The app should treat this manifest as an intermediate response, choose nested media files, and then download the inner HEIC payload candidates.
