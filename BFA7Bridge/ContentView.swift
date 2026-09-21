@@ -623,6 +623,8 @@ private struct ImportLabSection: View {
     @State private var importTriggerTarget = "FE95/005E"
     @State private var importTriggerHex = ""
     @State private var importTriggerEnabled = false
+    @State private var createWifiAPSeq = "81"
+    @State private var createWifiAPWifiType = 2
 
     var body: some View {
         Section("Import Lab") {
@@ -699,6 +701,41 @@ private struct ImportLabSection: View {
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("APK CreateWifiAP candidate")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("seq")
+                    TextField("81", text: $createWifiAPSeq)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+                        .frame(maxWidth: 70)
+
+                    Spacer()
+
+                    Stepper("wifiType \(createWifiAPWifiType)", value: $createWifiAPWifiType, in: 0...4)
+                        .labelsHidden()
+                    Text("wifiType \(createWifiAPWifiType)")
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Button("Build CreateWifiAP") {
+                        importTriggerHex = createWifiAPCandidateHex
+                    }
+
+                    Spacer()
+
+                    Button("Build next seq") {
+                        importTriggerHex = createWifiAPCandidateHex
+                        createWifiAPSeq = nextHexByte(after: createWifiAPSeq)
+                    }
+                }
+            }
+
             HStack {
                 Button("Write trigger") {
                     _ = glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget)
@@ -718,7 +755,23 @@ private struct ImportLabSection: View {
                 .disabled(!canWriteImportTrigger || media.isBusy)
             }
 
+            Button("Write APK CreateWifiAP + probe") {
+                Task {
+                    importTriggerHex = createWifiAPCandidateHex
+                    if glasses.writeHexCommand(importTriggerHex, target: importTriggerTarget) {
+                        createWifiAPSeq = nextHexByte(after: createWifiAPSeq)
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        await media.refreshFileList()
+                    }
+                }
+            }
+            .disabled(!importTriggerEnabled || media.isBusy)
+
             Text("Важно: это лаборатория для проверенных BLE-кандидатов. Наблюдаемые incoming A5-пакеты не считаются доказанными командами Xiaomi app.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Text("APK clue: CreateWifiAP uses command bytes 00 02 and content 01 wifiType 01; encrypted commands prepend seq. This section only builds that candidate, it does not prove the final trigger until the Wi-Fi probe succeeds.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -738,6 +791,25 @@ private struct ImportLabSection: View {
         importTriggerEnabled &&
         !importTriggerTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !importTriggerHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var createWifiAPCandidateHex: String {
+        let seq = normalizedHexByte(createWifiAPSeq) ?? "81"
+        let wifiType = String(format: "%02X", createWifiAPWifiType & 0xff)
+        return "\(seq) 00 02 01 \(wifiType) 01"
+    }
+
+    private func normalizedHexByte(_ value: String) -> String? {
+        let filtered = value.filter { $0.isHexDigit }
+        guard !filtered.isEmpty,
+              let byte = UInt8(filtered.suffix(2), radix: 16) else { return nil }
+        return String(format: "%02X", byte)
+    }
+
+    private func nextHexByte(after value: String) -> String {
+        let current = UInt8(normalizedHexByte(value) ?? "80", radix: 16) ?? 0x80
+        let next = current == 0x7f ? UInt8(0x80) : current &+ 1
+        return String(format: "%02X", next)
     }
 }
 

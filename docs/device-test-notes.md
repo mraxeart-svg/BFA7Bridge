@@ -264,3 +264,23 @@ Implementation note:
 - Lab now includes an `Import Trigger` write section with an explicit target characteristic and HEX candidate.
 - `Write + Wi-Fi probe` writes the candidate and then refreshes `/v1/filelists`, giving a quick success/failure signal.
 - Use this only with candidates captured from a real Xiaomi-app write source, such as Android Bluetooth HCI snoop, a BLE sniffer, or a Windows prototype log that includes outgoing writes.
+
+
+## 2026-09-21 APK CreateWifiAP candidate
+
+Source: static analysis of Xiaomi Glasses APK bundle supplied by tester. The bundle contains `com.xiaomi.superhexa.apk`; relevant classes were found in `classes6.dex` and `classes7.dex`.
+
+Findings:
+
+- The official app has a `SendCreateWifiAP` command strategy.
+- `CreateWifiAP` command type bytes in enum `u1/d` are `00 02`.
+- `SendCreateWifiAP.getContentData()` builds three bytes: `01 <wifiType> 01`.
+- `SVBaseCommandStrategy.getData(seq)` prepends the command `seq` byte for encrypted commands, so the candidate payload shape is `<seq> 00 02 01 <wifiType> 01`.
+- The Android seq generator starts at `0x80`; the first generated seq is `0x81`, then it increments and wraps.
+- The BLE sender writes `command.d()` directly through Nordic `writeCharacteristic` with Android write type `2` (default/write-with-response). No extra packet wrapper was visible in the generic sender path.
+
+Implementation note:
+
+- Lab now includes an APK-derived CreateWifiAP candidate builder with editable `seq` and `wifiType` (`0...4`).
+- This is still experimental: success is defined only by the glasses starting the Wi-Fi AP and `/v1/filelists` becoming reachable from BFA7 Bridge.
+- Android hardware is not required for the next test; Windows GATT is also not required because the iPhone app can write the candidate over CoreBluetooth.
