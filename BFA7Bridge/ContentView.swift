@@ -1013,6 +1013,7 @@ private struct SVAuthLabSection: View {
     @State private var target = BFA7SVProtocol.defaultTarget
     @State private var random = "BFA7BRIDGE"
     @State private var tokenKey = ""
+    @State private var startResponseHex = ""
     @State private var seq = "81"
     @State private var wifiType = 2
     @State private var commandHex = ""
@@ -1044,6 +1045,12 @@ private struct SVAuthLabSection: View {
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
+            TextField("StartChannel response hex", text: $startResponseHex, axis: .vertical)
+                .lineLimit(2...5)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
             HStack {
                 Text("seq")
                 TextField("81", text: $seq)
@@ -1067,6 +1074,12 @@ private struct SVAuthLabSection: View {
 
                 Spacer()
 
+                Button("Build ChannelVerify") {
+                    buildChannelVerify()
+                }
+            }
+
+            HStack {
                 Button("Build encrypted Import") {
                     buildEncryptedImport()
                 }
@@ -1112,6 +1125,27 @@ private struct SVAuthLabSection: View {
         }
     }
 
+    private func buildChannelVerify() {
+        do {
+            let key = try BFA7SVProtocol.sessionKey(tokenKeyText: tokenKey)
+            guard let response = Data(bfa7HexString: startResponseHex) else {
+                report = "ChannelVerify build failed: invalid StartChannel response hex"
+                return
+            }
+            let cleanSeq = seq.filter { $0.isHexDigit }
+            let build = try BFA7SVProtocol.channelVerifyPayload(
+                sessionKey: key,
+                startChannelResponse: response,
+                random: random,
+                seq: UInt8(cleanSeq.suffix(2), radix: 16) ?? 0x82
+            )
+            commandHex = build.hex
+            report = reportText(build)
+        } catch {
+            report = "ChannelVerify build failed: \(error.localizedDescription)"
+        }
+    }
+
     private func buildEncryptedImport() {
         do {
             let key = try BFA7SVProtocol.sessionKey(tokenKeyText: tokenKey)
@@ -1138,7 +1172,8 @@ private struct SVAuthLabSection: View {
         lines.append("")
         lines.append("APK findings:")
         lines.append("- StartChannel wire format: seq + commandType=0x05 + len(random) + random.")
-        lines.append("- ChannelVerify wire format: seq + commandType=0x06 + len(encrypted) + encrypted.")
+        lines.append("- StartChannel response parser: len(deviceRandom) + deviceRandom + len(deviceSignature) + deviceSignature; pasted hex may include seq/type prefix or full A5 header.")
+        lines.append("- ChannelVerify verifies HMAC-SHA256(sessionKey, random + deviceRandom), then sends seq + commandType=0x06 + len(encrypted) + encrypted.")
         lines.append("- BizData wire format: seq + commandType=0x11 + len(encrypted) + encrypted.")
         lines.append("- CreateWifiAP inner type=00 02, content=01 wifiType 01, wrapped by AES-GCM BizData.")
         lines.append("- sessionKey = HKDF-SHA256(base64(tokenKey), salt=20..2B, info=superhexa-bind, 16 bytes).")

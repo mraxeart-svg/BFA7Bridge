@@ -5,6 +5,8 @@ enum BFA7SVProtocolError: LocalizedError {
     case invalidTokenKey
     case invalidLength(String)
     case cryptoFailed
+    case invalidStartChannelResponse
+    case deviceSignatureMismatch
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +16,10 @@ enum BFA7SVProtocolError: LocalizedError {
             return "\(value) is too long for the one-byte Xiaomi SV length field."
         case .cryptoFailed:
             return "CryptoKit could not create the AES-GCM packet."
+        case .invalidStartChannelResponse:
+            return "StartChannel response must contain len(deviceRandom), deviceRandom, len(deviceSignature), deviceSignature."
+        case .deviceSignatureMismatch:
+            return "StartChannel device signature does not match HMAC-SHA256(sessionKey, random + deviceRandom)."
         }
     }
 }
@@ -29,6 +35,12 @@ struct BFA7SVWifiAPData: Hashable {
     let ssid: String
     let passphrase: String
     let ip: String
+}
+
+struct BFA7SVStartChannelResponse: Hashable {
+    let payloadOffset: Int
+    let deviceRandom: Data
+    let deviceSignature: Data
 }
 
 enum BFA7SVProtocol {
@@ -66,9 +78,13 @@ enum BFA7SVProtocol {
         return key.withUnsafeBytes { Data($0) }
     }
 
-    static func channelVerifyPayload(sessionKey: Data, startChannelDeviceData: Data, random: String, seq: UInt8) throws -> BFA7SVCommandBuild {
-        let signInput = Data(random.utf8) + startChannelDeviceData
-        let signature = HMAC<SHA256>.authenticationCode(for: signInput, using: SymmetricKey(data: sessionKey))
+    static func channelVerifyPayload(sessionKey: Data, startChannelResponse: Data, random: String, seq: UInt8) throws -> BFA7SVCommandBuild {
+        let parsed = try parseStartChannelResponse(startChannelResponse)
+        let signInput = Data(random.utf8) + parsed.deviceRandom
+        let expectedSignature = HMAC<SHA256>.authenticationCode(for: signInput, using: SymmetricKey(data: sessionKey))
+        guard Data(expectedSignature) == parsed.deviceSignature else {
+            throw BFA7SVProtocolError.deviceSignatureMismatch
+        }
         let encrypted = try aesGCMSeal(Data("device_info_data".utf8), keyData: sessionKey)
         let command = Data([seq, 0x06]) + (try lengthPrefixed(encrypted, label: "ChannelVerify encrypted data"))
         return BFA7SVCommandBuild(
@@ -76,11 +92,27 @@ enum BFA7SVProtocol {
             hex: command.bfa7HexString,
             notes: [
                 "APK: SendChannelVerify via SVBaseCommandStrategy.getData(seq).",
-                "Expected device signature: HMAC_SHA256(sessionKey, random + deviceData).",
-                "Computed signature for comparison: \(Data(signature).bfa7HexString)",
+                "Parsed StartChannel response at payload offset \(parsed.payloadOffset).",
+                "Device random: \(parsed.deviceRandom.bfa7HexString)",
+                "Verified device signature: \(parsed.deviceSignature.bfa7HexString)",
                 "Wire format: seq + commandType(0x06) + len(AES-GCM('device_info_data')) + encrypted bytes."
             ]
         )
+    }
+
+    static func parseStartChannelResponse(_ data: Data) throws -> BFA7SVStartChannelResponse {
+        let bytes = Array(data)
+        guard bytes.count >= 2 else { throw BFA7SVProtocolError.invalidStartChannelResponse }
+
+        var candidateOffsets = Array(0...min(4, bytes.count - 1))
+        if bytes.count > 8, bytes[0] == 0xA5, bytes[1] == 0xA5 {
+            candidateOffsets.append(8)
+        }
+        for offset in candidateOffsets {
+            guard let parsed = parseStartChannelResponse(bytes: bytes, offset: offset) else { continue }
+            return parsed
+        }
+        throw BFA7SVProtocolError.invalidStartChannelResponse
     }
 
     static func encryptedCreateWifiAP(tokenKeyText: String, seq: UInt8, wifiType: UInt8) throws -> BFA7SVCommandBuild {
@@ -151,6 +183,25 @@ enum BFA7SVProtocol {
     private static func lengthPrefixed(_ data: Data, label: String) throws -> Data {
         guard data.count <= 255 else { throw BFA7SVProtocolError.invalidLength(label) }
         return Data([UInt8(data.count)]) + data
+    }
+
+    private static func parseStartChannelResponse(bytes: [UInt8], offset: Int) -> BFA7SVStartChannelResponse? {
+        guard offset < bytes.count else { return nil }
+        let randomLength = Int(bytes[offset])
+        let randomStart = offset + 1
+        let randomEnd = randomStart + randomLength
+        guard randomLength > 0, randomEnd < bytes.count else { return nil }
+
+        let signatureLength = Int(bytes[randomEnd])
+        let signatureStart = randomEnd + 1
+        let signatureEnd = signatureStart + signatureLength
+        guard signatureLength > 0, signatureEnd == bytes.count else { return nil }
+
+        return BFA7SVStartChannelResponse(
+            payloadOffset: offset,
+            deviceRandom: Data(bytes[randomStart..<randomEnd]),
+            deviceSignature: Data(bytes[signatureStart..<signatureEnd])
+        )
     }
 
     private static func readLengthString(_ payload: ArraySlice<UInt8>, index: inout ArraySlice<UInt8>.Index) -> String? {

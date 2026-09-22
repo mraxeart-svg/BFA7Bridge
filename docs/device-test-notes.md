@@ -347,3 +347,19 @@ Implementation:
 
 - Added `BFA7SVProtocol.swift` with APK-derived HKDF/AES-GCM command builders and WifiAPData parser.
 - Added `SV Auth Lab` UI to build `StartChannel` and encrypted `BizData(CreateWifiAP)` reports instead of relying on blind command variants.
+
+## 2026-09-22 SV ChannelVerify parser
+
+Source: deeper local APK DEX analysis of `business/sv/b`, `StartChannelResponse` (`Lv0/c`), and Superhexa BLE command senders.
+
+Findings:
+
+- Superhexa SV commands are written as raw `seq + commandType + payload` BLE command bytes through the app BLE command path; the Xiaomi `A5 A5` `TransportL1` packet layer exists in the APK but is not the SV command sender for this path.
+- `StartChannel` response parses as `len(deviceRandom) + deviceRandom + len(deviceSignature) + deviceSignature`.
+- The app verifies `deviceSignature == HMAC-SHA256(sessionKey, appRandom + deviceRandom)`.
+- `ChannelVerify` sends `seq + 0x06 + len(encrypted) + AES-GCM("device_info_data", sessionKey)` after signature verification.
+
+Implementation:
+
+- Added StartChannel response parser with tolerance for pasted raw payload, `seq/type` prefix, or a full `A5 A5` frame header.
+- Added `Build ChannelVerify` in SV Auth Lab so the next device test can run StartChannel -> ChannelVerify -> encrypted Import in order.
