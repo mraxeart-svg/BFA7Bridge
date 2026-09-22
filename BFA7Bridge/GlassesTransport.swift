@@ -42,6 +42,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     private var subscribedCharacteristics: Set<String> = []
     private var writableCharacteristicKeys: Set<String> = []
     private var writableCharacteristicRefs: [CBCharacteristic] = []
+    private var connectionTimeoutTask: Task<Void, Never>?
     private let miBeaconService = CBUUID(string: "FE95")
     private let svCommandService = CBUUID(string: "AD3072F9-DCCB-4A10-989F-CA7EE37AB757")
     private let uartService = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -52,6 +53,10 @@ final class GlassesTransport: NSObject, ObservableObject {
     }
 
     func startScan() {
+        if let currentPeripheral {
+            central.cancelPeripheralConnection(currentPeripheral)
+        }
+        cancelConnectionTimeout()
         guard state == .poweredOn else {
             appendLog("Bluetooth недоступен: \(stateDescription)", kind: .error)
             return
@@ -59,16 +64,7 @@ final class GlassesTransport: NSObject, ObservableObject {
 
         devices.removeAll()
         peripherals.removeAll()
-        currentPeripheral = nil
-        serviceCount = 0
-        svServiceState = "Не проверено"
-        uartServiceState = "Не проверено"
-        notificationCount = 0
-        writableCharacteristics.removeAll()
-        writableCharacteristicRefs.removeAll()
-        writableCharacteristicKeys.removeAll()
-        subscribedCharacteristics.removeAll()
-        gattServices.removeAll()
+        resetGATTState(clearPeripheral: true)
         isScanning = true
 
         appendLog("Сканирование BFA7", kind: .discovery)
@@ -91,15 +87,40 @@ final class GlassesTransport: NSObject, ObservableObject {
         }
 
         stopScan()
+        cancelConnectionTimeout()
+        if let currentPeripheral, currentPeripheral.identifier != peripheral.identifier {
+            central.cancelPeripheralConnection(currentPeripheral)
+        }
+        resetGATTState(clearPeripheral: false)
+        currentPeripheral = peripheral
         connectionState = "Подключение..."
         appendLog("Подключение к \(device.name)", kind: .connection)
         peripheral.delegate = self
         central.connect(peripheral, options: nil)
+        armConnectionTimeout(for: peripheral, seconds: 15)
     }
 
     func disconnect() {
-        guard let currentPeripheral else { return }
+        cancelConnectionTimeout()
+        guard let currentPeripheral else {
+            resetGATTState(clearPeripheral: true)
+            connectionState = "Не подключено"
+            return
+        }
         central.cancelPeripheralConnection(currentPeripheral)
+        resetGATTState(clearPeripheral: true)
+        connectionState = "Отключено"
+        appendLog("Отключение вручную", kind: .connection)
+    }
+
+    func resetConnection() {
+        cancelConnectionTimeout()
+        if let currentPeripheral {
+            central.cancelPeripheralConnection(currentPeripheral)
+        }
+        resetGATTState(clearPeripheral: true)
+        connectionState = "Сброшено"
+        appendLog("BLE-подключение сброшено", kind: .connection)
     }
 
     func startButtonExperiment() {
@@ -290,6 +311,41 @@ final class GlassesTransport: NSObject, ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+
+    private func armConnectionTimeout(for peripheral: CBPeripheral, seconds: TimeInterval) {
+        let peripheralID = peripheral.identifier
+        connectionTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            await MainActor.run {
+                guard let self, self.currentPeripheral?.identifier == peripheralID, self.connectionState == "Подключение..." else { return }
+                self.central.cancelPeripheralConnection(peripheral)
+                self.resetGATTState(clearPeripheral: true)
+                self.connectionState = "Таймаут подключения"
+                self.appendLog("Таймаут подключения", kind: .error, detail: peripheral.name ?? peripheral.identifier.uuidString)
+            }
+        }
+    }
+
+    private func cancelConnectionTimeout() {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+    }
+
+    private func resetGATTState(clearPeripheral: Bool) {
+        if clearPeripheral {
+            currentPeripheral = nil
+        }
+        serviceCount = 0
+        svServiceState = "Не проверено"
+        uartServiceState = "Не проверено"
+        notificationCount = 0
+        writableCharacteristics.removeAll()
+        writableCharacteristicRefs.removeAll()
+        writableCharacteristicKeys.removeAll()
+        subscribedCharacteristics.removeAll()
+        gattServices.removeAll()
+    }
+
     private func appendLog(_ value: String, kind: BFA7EventKind = .diagnostic, detail: String = "") {
         eventBus.publish(kind: kind, title: value, detail: detail)
         log = eventBus.events.reversed().map(\.line)
@@ -460,8 +516,14 @@ extension GlassesTransport: CBCentralManagerDelegate {
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        let peripheralID = peripheral.identifier
         Task { @MainActor in
-            currentPeripheral = peripheral
+            guard currentPeripheral?.identifier == peripheralID else {
+                central.cancelPeripheralConnection(peripheral)
+                appendLog("Игнорирую позднее подключение", kind: .connection, detail: peripheral.name ?? peripheralID.uuidString)
+                return
+            }
+            cancelConnectionTimeout()
             connectionState = "Подключено"
             appendLog("Подключено: \(peripheral.name ?? peripheral.identifier.uuidString)", kind: .connection)
             peripheral.delegate = self
@@ -470,8 +532,12 @@ extension GlassesTransport: CBCentralManagerDelegate {
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        let peripheralID = peripheral.identifier
         let message = error?.localizedDescription ?? "unknown"
         Task { @MainActor in
+            guard currentPeripheral?.identifier == peripheralID else { return }
+            cancelConnectionTimeout()
+            resetGATTState(clearPeripheral: true)
             connectionState = "Ошибка подключения"
             appendLog("Ошибка подключения: \(message)", kind: .error)
         }
@@ -481,17 +547,10 @@ extension GlassesTransport: CBCentralManagerDelegate {
         let peripheralID = peripheral.identifier
         let message = error?.localizedDescription ?? "без ошибки"
         Task { @MainActor in
-            if currentPeripheral?.identifier == peripheralID {
-                currentPeripheral = nil
-            }
+            guard currentPeripheral?.identifier == peripheralID else { return }
+            cancelConnectionTimeout()
+            resetGATTState(clearPeripheral: true)
             connectionState = "Отключено"
-            svServiceState = "Не проверено"
-            uartServiceState = "Не проверено"
-            notificationCount = 0
-            writableCharacteristics.removeAll()
-            writableCharacteristicRefs.removeAll()
-            writableCharacteristicKeys.removeAll()
-            subscribedCharacteristics.removeAll()
             appendLog("Отключено: \(message)", kind: .connection)
         }
     }
