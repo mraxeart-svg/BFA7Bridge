@@ -219,6 +219,7 @@ private struct DeviceView: View {
 private struct CaptureView: View {
     @EnvironmentObject private var media: MediaTransfer
     @EnvironmentObject private var systemCapture: SystemCaptureProbe
+    @EnvironmentObject private var wifiJoiner: BFA7WiFiJoiner
 
     var body: some View {
         NavigationStack {
@@ -252,6 +253,24 @@ private struct CaptureView: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+
+                    TextField("BFA7 Wi-Fi SSID", text: $wifiJoiner.ssidText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    HStack {
+                        Button("Join BFA7 Wi-Fi") {
+                            Task { await wifiJoiner.joinAndRefresh(media: media) }
+                        }
+                        .disabled(wifiJoiner.isJoining || media.isBusy)
+
+                        Spacer()
+                        if wifiJoiner.isJoining { ProgressView() }
+                    }
+
+                    Text(wifiJoiner.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     HStack {
                         Button("Обновить список") {

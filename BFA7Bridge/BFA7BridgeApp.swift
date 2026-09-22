@@ -10,6 +10,7 @@ struct BFA7BridgeApp: App {
     @StateObject private var systemCapture = SystemCaptureProbe()
     @StateObject private var commands = CommandSession()
     @StateObject private var sessions = BFA7SessionStore()
+    @StateObject private var wifiJoiner = BFA7WiFiJoiner()
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,7 @@ struct BFA7BridgeApp: App {
                 .environmentObject(systemCapture)
                 .environmentObject(commands)
                 .environmentObject(sessions)
+                .environmentObject(wifiJoiner)
         }
     }
 }

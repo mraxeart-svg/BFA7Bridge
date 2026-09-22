@@ -24,6 +24,7 @@
 		AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002F /* SystemCaptureProbe.swift */; };
 		AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000091 /* SpeechTranscriber.swift */; };
 		AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000093 /* BFA7SVProtocol.swift */; };
+		AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000095 /* BFA7WiFiJoiner.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		AA0000000000000000000022 /* BluetoothManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothManager.swift; sourceTree = "<group>"; };
 		AA0000000000000000000023 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000097 /* BFA7Bridge.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BFA7Bridge.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000025 /* BFA7EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7EventBus.swift; sourceTree = "<group>"; };
 		AA0000000000000000000026 /* BFA7LabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7LabModels.swift; sourceTree = "<group>"; };
 		AA0000000000000000000027 /* GlassesTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesTransport.swift; sourceTree = "<group>"; };
@@ -45,6 +47,7 @@
 		AA000000000000000000002F /* SystemCaptureProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCaptureProbe.swift; sourceTree = "<group>"; };
 		AA0000000000000000000091 /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
 		AA0000000000000000000093 /* BFA7SVProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7SVProtocol.swift; sourceTree = "<group>"; };
+		AA0000000000000000000095 /* BFA7WiFiJoiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7WiFiJoiner.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,9 +86,11 @@
 				AA000000000000000000002C /* BFA7AppIntents.swift */,
 				AA000000000000000000002D /* ProtocolLab.swift */,
 				AA0000000000000000000093 /* BFA7SVProtocol.swift */,
+				AA0000000000000000000095 /* BFA7WiFiJoiner.swift */,
 				AA000000000000000000002E /* WiFiImportLab.swift */,
 				AA000000000000000000002F /* SystemCaptureProbe.swift */,
 				AA0000000000000000000024 /* Info.plist */,
+				AA0000000000000000000097 /* BFA7Bridge.entitlements */,
 			);
 			path = BFA7Bridge;
 			sourceTree = "<group>";
@@ -176,6 +181,7 @@
 				AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */,
 				AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */,
 				AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */,
+				AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,6 +197,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = BFA7Bridge/BFA7Bridge.entitlements;
 				INFOPLIST_FILE = BFA7Bridge/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mraxeart.BFA7Bridge;
@@ -209,6 +216,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = BFA7Bridge/BFA7Bridge.entitlements;
 				INFOPLIST_FILE = BFA7Bridge/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mraxeart.BFA7Bridge;

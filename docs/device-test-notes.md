@@ -402,9 +402,9 @@ Interpretation:
 - `T700_54` advertises `FE95`, so it is a real Xiaomi/MiBeacon-style candidate but not the APK-confirmed SV profile. It may be unrelated unless its connected GATT matches BFA7 behavior.
 - The previous UI fallback name included `BFA7`, which made nameless nearby BLE devices pass the name filter. The scanner now checks BFA7/Xiaomi name matches only against real advertised/peripheral names, not fallback text.
 
-## 2026-09-22 T700_54 is tied to the glasses power state
+## 2026-09-22 T700_54 false positive
 
-Tester confirmed that `T700_54` disappears when the BFA7 glasses are powered off and reappears when they are powered on.
+Tester initially saw `T700_54` appear/disappear near glasses power-state tests, but later physically moved locations and `T700_54` disappeared while the glasses remained available.
 
 Observed T700_54 GATT profile:
 
@@ -413,8 +413,22 @@ Observed T700_54 GATT profile:
 - `FE95` with `0004` read, `0010` writeNR/notify, and `0019` writeNR/notify.
 - Device information services `180F` and `180A`.
 
-Interpretation:
+Updated interpretation:
 
-- `T700_54` is very likely a second BFA7 BLE endpoint.
-- It is not the APK-confirmed SV endpoint (`AD3072F9...`) but its UART-like `6E400001` channel is now a first-class diagnostic target.
-- The app now reports `UART service` after GATT discovery so testers can distinguish the visible FE95 glasses endpoint from the T700 UART endpoint.
+- `T700_54` is a nearby unrelated BLE device and should not drive the BFA7 import path.
+- The app still reports `UART service` after GATT discovery because it is useful diagnostic context.
+- Continue treating the visible `Xiaomi AI Glasses BFA7` / `FE95` endpoint as the relevant glasses BLE target until a real second endpoint is observed moving with the glasses.
+
+## 2026-09-22 iOS sysdiagnose Wi-Fi history
+
+Source: user-provided sysdiagnose captured after Xiaomi Import experiments.
+
+Findings:
+- Bluetooth status confirms paired/connected `Xiaomi AI Glasses BFA7` at `04:34:c3:50:bf:a7`.
+- Wi-Fi Join history contains repeated successful joins where iOS integer IPv4 values decode to `192.168.43.4` with router `192.168.43.1`, matching the glasses media server base URL.
+- The likely glasses AP entries have a short DHCP lease around 59 minutes and strong RSSI.
+- The sysdiagnose did not expose decoded CoreBluetooth GATT write payloads from the Xiaomi app; Linux cannot reliably decode Apple `tracev3` logarchive without `log show` on macOS.
+
+Implementation response:
+- Added `BFA7WiFiJoiner` using `NEHotspotConfiguration` so Capture can request joining the `Xiaomi AI Glasses BFA7` SSID and immediately check `/v1/filelists`.
+- This does not activate the glasses AP by itself; it reduces manual friction once the AP is already visible.
