@@ -41,7 +41,9 @@ final class BFA7WiFiJoiner: ObservableObject {
             let reachable = await media.quickRefreshFileList(timeout: 5)
             status = reachable ? "BFA7 Wi-Fi доступен" : "Wi-Fi есть, но /v1/filelists не ответил"
         } catch {
-            status = "Wi-Fi join ошибка: \(error.localizedDescription)"
+            status = "Wi-Fi join ошибка; проверяю 192.168.43.1"
+            let reachable = await media.quickRefreshFileList(timeout: 5)
+            status = reachable ? "BFA7 Wi-Fi доступен после fallback" : "Wi-Fi join ошибка: \(error.localizedDescription)"
         }
     }
 
