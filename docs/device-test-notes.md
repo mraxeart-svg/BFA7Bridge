@@ -363,3 +363,17 @@ Implementation:
 
 - Added StartChannel response parser with tolerance for pasted raw payload, `seq/type` prefix, or a full `A5 A5` frame header.
 - Added `Build ChannelVerify` in SV Auth Lab so the next device test can run StartChannel -> ChannelVerify -> encrypted Import in order.
+
+## 2026-09-22 Exact SV GATT profile from APK
+
+Source: local APK DEX analysis of `bluetooth/device/j`, `bluetooth/device/k`, and `r3/c`.
+
+Findings:
+
+- `device/j` is the BLE SV client that sends `SendStartChannel`/`SendChannelVerify` through the Superhexa BLE command path.
+- `device/k` constructs the exact SV GATT profile: service `AD3072F9-DCCB-4A10-989F-CA7EE37AB757`, notification characteristic `00001801-0000-1000-8000-00805F9B34FB`, write characteristic `00001802-0000-1000-8000-00805F9B34FB`, optional read/device-info characteristic `00001800-0000-1000-8000-00805F9B34FB`.
+- Previous `FE95/005F` StartChannel tests only proved that MiWear/SAR write accepts bytes; it is not the confirmed SV command channel.
+
+Implementation:
+
+- Changed the SV Auth Lab default target to the APK-confirmed SV write characteristic `AD3072F9-DCCB-4A10-989F-CA7EE37AB757/00001802-0000-1000-8000-00805F9B34FB`.

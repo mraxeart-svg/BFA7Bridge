@@ -44,7 +44,7 @@ struct BFA7SVStartChannelResponse: Hashable {
 }
 
 enum BFA7SVProtocol {
-    static let defaultTarget = "FE95/005F"
+    static let defaultTarget = "AD3072F9-DCCB-4A10-989F-CA7EE37AB757/00001802-0000-1000-8000-00805F9B34FB"
 
     private static let hkdfSalt = Data([0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B])
     private static let hkdfInfo = Data("superhexa-bind".utf8)
