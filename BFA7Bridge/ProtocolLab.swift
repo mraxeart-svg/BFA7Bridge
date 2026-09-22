@@ -405,6 +405,63 @@ final class ProtocolLab: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+    func importWitnessReport(around date: Date?) -> String {
+        let entries = importWindowEntries(around: date)
+        let incoming = entries.filter { $0.packet.direction == .incoming }
+        let outgoing = entries.filter { $0.packet.direction == .outgoing }
+        let incomingByCharacteristic = Dictionary(grouping: incoming) { entry in
+            entry.packet.characteristicUUID
+        }
+
+        var lines: [String] = []
+        lines.append("BFA7 Paired Import Witness Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Window: -\(String(format: "%.1f", timelineWindowBefore))s...+\(String(format: "%.1f", timelineWindowAfter))s")
+        lines.append("Scope: records BFA7 Bridge BLE traffic while Xiaomi app is used as the external Import trigger.")
+        lines.append("Important: iOS apps cannot sniff BLE writes made by another app. Outgoing rows below are only writes made by BFA7 Bridge itself.")
+        lines.append("")
+        lines.append("Counts: packets=\(entries.count), incoming=\(incoming.count), bridgeOutgoing=\(outgoing.count)")
+        lines.append("")
+        lines.append("Bridge outgoing writes:")
+        if outgoing.isEmpty {
+            lines.append("- none captured from BFA7 Bridge in this window")
+            lines.append("- if Import succeeded after Xiaomi app action, the real Xiaomi write was outside this app's CoreBluetooth visibility")
+        } else {
+            for entry in outgoing {
+                lines.append("\(entry.relativeLabel) | -> \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.hex)")
+            }
+        }
+        lines.append("")
+        lines.append("Incoming notifications by characteristic:")
+        if incomingByCharacteristic.isEmpty {
+            lines.append("- none")
+        } else {
+            for key in incomingByCharacteristic.keys.sorted() {
+                let group = incomingByCharacteristic[key] ?? []
+                let bytes = group.reduce(0) { $0 + $1.packet.byteCount }
+                let a5 = group.filter { $0.packet.looksLikeA5Frame }.count
+                let sizes = Dictionary(grouping: group) { $0.packet.byteCount }
+                    .map { size, packets in "\(size)B x\(packets.count)" }
+                    .sorted()
+                    .joined(separator: ", ")
+                let first = group.map(\.relativeSeconds).min() ?? 0
+                let last = group.map(\.relativeSeconds).max() ?? 0
+                lines.append("- \(key): packets=\(group.count), bytes=\(bytes), A5=\(a5), range=\(String(format: "%+.3fs", first))...\(String(format: "%+.3fs", last)), sizes=[\(sizes)]")
+            }
+        }
+        lines.append("")
+        lines.append("Timeline:")
+        if entries.isEmpty {
+            lines.append("No BLE packets in focused window.")
+        } else {
+            for entry in entries {
+                lines.append("\(entry.relativeLabel) | \(entry.packet.direction.marker) \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.firstBytes) | \(entry.packet.frame?.summary ?? "raw")")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     func importReplayCandidateReport(around date: Date?) -> String {
         let entries = importWindowEntries(around: date)
             .filter { entry in

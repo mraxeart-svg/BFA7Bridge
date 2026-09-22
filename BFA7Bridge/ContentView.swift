@@ -701,6 +701,11 @@ private struct ImportLabSection: View {
                 .disabled(protocolLab.packets.isEmpty)
             }
 
+            Button("Copy paired import witness") {
+                UIPasteboard.general.string = pairedImportWitnessText
+            }
+            .disabled(glasses.importExperimentStartedAt == nil)
+
             Button("Copy import JSON") {
                 UIPasteboard.general.string = protocolLab.importJSONExport(around: glasses.importExperimentMarkedAt)
             }
@@ -866,7 +871,7 @@ private struct ImportLabSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy import report + Copy probe.")
+            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy paired import witness. iOS не показывает BLE write, отправленный Xiaomi app; отчёт фиксирует только наши write и ответы очков.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -876,6 +881,28 @@ private struct ImportLabSection: View {
                 .lineLimit(8)
                 .textSelection(.enabled)
         }
+    }
+
+    private var pairedImportWitnessText: String {
+        var lines: [String] = []
+        lines.append(protocolLab.importWitnessReport(around: glasses.importExperimentMarkedAt))
+        lines.append("")
+        lines.append("Wi-Fi/media state:")
+        lines.append("Status: \(media.status)")
+        lines.append("Files listed: \(media.files.count)")
+        if let latest = media.latestDownloaded {
+            lines.append("Latest downloaded: \(latest.filename)")
+            lines.append("Latest local: \(latest.localURL?.lastPathComponent ?? "none")")
+        } else {
+            lines.append("Latest downloaded: none")
+        }
+        lines.append("")
+        lines.append("Last transfer report:")
+        lines.append(media.lastTransferReport)
+        lines.append("")
+        lines.append("Last Wi-Fi probe report:")
+        lines.append(media.lastProbeReport)
+        return lines.joined(separator: "\n")
     }
 
     private var canWriteImportTrigger: Bool {
