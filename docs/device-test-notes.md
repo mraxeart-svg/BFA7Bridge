@@ -459,3 +459,45 @@ Implementation response:
 - Added `Copy all large incoming frames`, which scans from `Start import experiment` through `Mark + 15s` instead of only the narrow Mark window.
 - The report includes incoming frames with `byteCount >= 40` or declared A5 payload length `>= 32`, preserving full HEX/ASCII for protocol comparison.
 - The wide report is also embedded in `Copy paired import witness` so the next test captures it even if the separate button is missed.
+
+## 2026-09-22 public software search
+
+Source: public web search for Xiaomi AI Glasses / Xiaomi Glasses software and hotspot/AP reproduction paths.
+
+Findings:
+
+- The Play Store package `com.smglassy.xiomaismartglasses` is not an official Xiaomi app. Its listing names an independent developer and states that it is not affiliated with Xiaomi or any smart-glasses manufacturer.
+- The real Xiaomi Glasses package remains `com.xiaomi.superhexa`, matching the APK bundle previously supplied for local analysis. Xiaomi app-store metadata lists `com.xiaomi.superhexa` as Xiaomi Glasses by Xiaomi Technology Co., Ltd., version `3.3.0` as of 2026-07-24.
+- App Store metadata also reports Xiaomi Glasses `com.xiaomi.superhexa` version `3.3.0`, published by Beijing Xiaomi Mobile Software Co., Ltd., updated 2026-07-15.
+- MentraOS public notes claim a working Android/logcat path: Xiaomi app sends a photo-sync request with `type=101`; glasses create an AP; a roughly 67-byte response carries dynamic Wi-Fi credentials; HTTP media remains at `http://192.168.43.1:8080/v1/`.
+- Public search did not reveal a standalone trustworthy open-source tool that directly starts the BFA7 AP without the official Xiaomi app. The actionable public path is Android logcat capture/automation around the official app, plus our existing iOS BLE/AP reverse engineering.
+
+Implementation response:
+
+- Added `tools/bfa7-android-logcat-wifi-capture.sh` as a local Android test helper. It watches `adb logcat` for Xiaomi Glasses AP credential lines and writes the latest SSID, password, gateway, and API base URL to `/tmp/bfa7_xiaomi_wifi_credentials.txt`.
+- Treat modified APKs from forums as untrusted. They may be useful only for static analysis in isolation, not as a recommended install path on a personal phone.
+
+
+## 2026-09-22 APK WearPacket / WiFiAP extraction
+
+Source: local DEX analysis of the supplied `com.xiaomi.superhexa` APK with `tools/extract_wearpacket_builders.py`.
+
+Findings:
+
+- `DeviceContactEngineImpl.call(...)` is only a wrapper around `callTimeoutWithData(... type=101 ...)`.
+- For `type=101`, `ContactTaskQueue.enqueue(...)` parses the payload with `DataParser.parsePacket([B)` and logs the embedded `WearPacket.type` and `WearPacket.id`.
+- `DataParser.getDataByWearPacket(...)` is a plain `MessageNano.toByteArray(packet)`. There is no extra header at this API layer.
+- Static APK builders visible in this bundle only create obvious bind/auth/mass `WearPacket`s (`id=17/18/19/25`, mass type `22`). The photo/import caller is not present as a clear static builder in the visible classes.
+- The protobuf schema does include `SystemProtos.WiFiAP` and `SystemProtos.WiFiAP.Result`. `Result` contains `code`, plus `ssid`, `password`, and `gateway`, matching the observed AP/media flow.
+- The incoming `FE95/005E` A5 frames captured around Xiaomi Import do not look like raw protobuf; the `WearPacket` is inside Xiaomi transport/encryption/framing.
+
+Interpretation:
+
+- Sending a guessed protobuf directly to `FE95/005F` is not equivalent to Xiaomi `DeviceContactEngine.call(type=101, payload)`.
+- The deterministic APK-confirmed AP command remains the encrypted SV path (`StartChannel -> ChannelVerify -> BizData(CreateWifiAP)`), but the visible iOS GATT endpoint currently exposes only `FE95/AF00/FD2D`, not the APK-confirmed `AD3072F9.../1802` SV write characteristic.
+- To get the exact BFA7 import write without guessing, the next best evidence source is runtime instrumentation/logging of the official app on Android or a macOS-side iOS logarchive/frida-class-dump workflow, not further FE95 brute force from iOS alone.
+
+Implementation response:
+
+- Added `tools/extract_wearpacket_builders.py` to list every visible `WearPacket` constructor/field assignment in the APK.
+- Kept FE95 replay tooling as diagnostic-only; do not treat it as the main route unless a real outgoing Xiaomi write is captured.

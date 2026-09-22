@@ -15,6 +15,7 @@ BFA7 Bridge is now structured around the free-first plan:
 - `BFA7AppIntents`: local App Intents for opening Ask/Describe/Stop flows.
 - `ProtocolLab`: structured BLE packet capture, `005E` filtering, A5 frame decoding, focused timeline reports, button-candidate reports, JSON/CSV export.
 - `WiFiImportLab`: persistent checklist for SSID/IP/ports/protocol notes during Xiaomi Glasses App Import.
+- `bash tools/bfa7-android-logcat-wifi-capture.sh`: optional Android/logcat helper for capturing Xiaomi Glasses AP credentials from the official `com.xiaomi.superhexa` app during Import.
 
 ## Free-backend gate
 
@@ -29,5 +30,15 @@ This build intentionally does not call the OpenAI API. The free ChatGPT path cur
 5. Connect the phone to the glasses Wi-Fi/AP when media transfer is active.
 6. Use **Capture** to call `/v1/filelists` and download the latest photo/video.
 7. Use **Ask** to prepare `Опиши что передо мной?` with the latest media and run the free gate.
+
+## Optional Android witness
+
+If an Android phone can pair with the glasses through the official Xiaomi Glasses app (`com.xiaomi.superhexa`), run:
+
+```bash
+bash tools/bfa7-android-logcat-wifi-capture.sh
+```
+
+Then start Import/photo sync in Xiaomi Glasses. The helper watches `adb logcat` for AP credential lines and writes the latest SSID, password, gateway, and API base URL to `/tmp/bfa7_xiaomi_wifi_credentials.txt`.
 
 See `docs/chat-context.md` for the preserved reverse-engineering notes from prior ChatGPT sessions, `docs/device-test-notes.md` for findings from real-device diagnostics, and `docs/windows-prototype-analysis.md` for the Windows prototype import analysis.
