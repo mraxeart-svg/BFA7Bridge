@@ -401,3 +401,20 @@ Interpretation:
 
 - `T700_54` advertises `FE95`, so it is a real Xiaomi/MiBeacon-style candidate but not the APK-confirmed SV profile. It may be unrelated unless its connected GATT matches BFA7 behavior.
 - The previous UI fallback name included `BFA7`, which made nameless nearby BLE devices pass the name filter. The scanner now checks BFA7/Xiaomi name matches only against real advertised/peripheral names, not fallback text.
+
+## 2026-09-22 T700_54 is tied to the glasses power state
+
+Tester confirmed that `T700_54` disappears when the BFA7 glasses are powered off and reappears when they are powered on.
+
+Observed T700_54 GATT profile:
+
+- `6E400001-B5A3-F393-E0A9-E50E24DCCA9E` with `6E400002` write/writeNR and `6E400003` notify.
+- `FE59` with `8EC90003-F315-4F60-9FB8-838830DAEA50` write/indicate.
+- `FE95` with `0004` read, `0010` writeNR/notify, and `0019` writeNR/notify.
+- Device information services `180F` and `180A`.
+
+Interpretation:
+
+- `T700_54` is very likely a second BFA7 BLE endpoint.
+- It is not the APK-confirmed SV endpoint (`AD3072F9...`) but its UART-like `6E400001` channel is now a first-class diagnostic target.
+- The app now reports `UART service` after GATT discovery so testers can distinguish the visible FE95 glasses endpoint from the T700 UART endpoint.

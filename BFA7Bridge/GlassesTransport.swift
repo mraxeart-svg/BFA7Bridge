@@ -11,6 +11,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     @Published private(set) var connectionState = "Не подключено"
     @Published private(set) var serviceCount = 0
     @Published private(set) var svServiceState = "Не проверено"
+    @Published private(set) var uartServiceState = "Не проверено"
     @Published private(set) var notificationCount = 0
     @Published private(set) var gattServices: [BFA7GATTService] = []
     @Published private(set) var writableCharacteristics: [String] = []
@@ -43,6 +44,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     private var writableCharacteristicRefs: [CBCharacteristic] = []
     private let miBeaconService = CBUUID(string: "FE95")
     private let svCommandService = CBUUID(string: "AD3072F9-DCCB-4A10-989F-CA7EE37AB757")
+    private let uartService = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
 
     override init() {
         super.init()
@@ -60,6 +62,7 @@ final class GlassesTransport: NSObject, ObservableObject {
         currentPeripheral = nil
         serviceCount = 0
         svServiceState = "Не проверено"
+        uartServiceState = "Не проверено"
         notificationCount = 0
         writableCharacteristics.removeAll()
         writableCharacteristicRefs.removeAll()
@@ -271,6 +274,7 @@ final class GlassesTransport: NSObject, ObservableObject {
         lines.append("Connection: \(connectionState)")
         lines.append("Services: \(serviceCount)")
         lines.append("SV service: \(svServiceState)")
+        lines.append("UART service: \(uartServiceState)")
         lines.append("Notify/Indicate enabled: \(notificationCount)")
         lines.append("Writable characteristics: \(writableCharacteristics.joined(separator: ", "))")
         lines.append("Devices:")
@@ -479,6 +483,7 @@ extension GlassesTransport: CBCentralManagerDelegate {
             }
             connectionState = "Отключено"
             svServiceState = "Не проверено"
+            uartServiceState = "Не проверено"
             notificationCount = 0
             writableCharacteristics.removeAll()
             writableCharacteristicRefs.removeAll()
@@ -501,8 +506,9 @@ extension GlassesTransport: CBPeripheralDelegate {
 
             serviceCount = services.count
             svServiceState = services.contains { $0.uuid == svCommandService } ? "Найден" : "Нет в текущем GATT"
+            uartServiceState = services.contains { $0.uuid == uartService } ? "Найден" : "Нет в текущем GATT"
             gattServices = services.map { BFA7GATTService(id: $0.uuid.uuidString, uuid: $0.uuid.uuidString, characteristics: []) }
-            appendLog("GATT: найдено сервисов \(services.count), SV=\(svServiceState)", kind: .discovery)
+            appendLog("GATT: найдено сервисов \(services.count), SV=\(svServiceState), UART=\(uartServiceState)", kind: .discovery)
 
             for service in services {
                 appendLog("Service: \(service.uuid.uuidString)", kind: .discovery)

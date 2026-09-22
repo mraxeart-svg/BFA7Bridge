@@ -87,6 +87,7 @@ private struct DeviceView: View {
                     statusRow("Состояние", glasses.connectionState)
                     statusRow("GATT-сервисов", "\(glasses.serviceCount)")
                     statusRow("SV service", glasses.svServiceState)
+                    statusRow("UART service", glasses.uartServiceState)
                     statusRow("Notify/Indicate ON", "\(glasses.notificationCount)")
                     statusRow("Writable", "\(glasses.writableCharacteristics.count)")
                     statusRow("Последняя кнопка", glasses.lastButtonEvent)
