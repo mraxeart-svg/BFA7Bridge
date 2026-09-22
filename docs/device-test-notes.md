@@ -340,6 +340,7 @@ Findings:
 - Xiaomi wraps `CreateWifiAP` inside `SendBizData`: inner plaintext is `seq 00 02 01 <wifiType> 01`; outer command type is `0x11`; payload is AES-GCM `IV + ciphertext + tag` with a one-byte length prefix.
 - The AES-GCM key is a session key created during the SV channel flow. Reconnect path: `SendStartChannel` (`0x05`) -> derive `sessionKey = HKDF-SHA256(tokenKey, salt 20..2B, info superhexa-bind, 16 bytes)` -> `SendChannelVerify` (`0x06`) -> encrypted BizData commands.
 - `CreateWifiAP` response type `0x0002` decodes into `WifiAPData`: code, SSID, passphrase, and IP.
+- APK `BleTaskQueueV2` maps the Mi Wear/SAR channel as `FE95/005E` for notify and `FE95/005F` for write. Earlier `005E` writes are therefore not a valid negative result for the SV command path.
 - The previous auto scanner was useful as a negative test but is now considered heuristic/legacy. The next deterministic milestone is reproducing the SV auth/channel flow or importing the saved Xiaomi `tokenKey`.
 
 Implementation:

@@ -190,7 +190,7 @@ struct BFA7BurstSummary: Identifiable, Hashable {
 @MainActor
 final class ProtocolLab: ObservableObject {
     @Published private(set) var packets: [BFA7ProtocolPacket] = []
-    @Published var characteristicFilter = "005E"
+    @Published var characteristicFilter = "005"
     @Published var showOnlyA5Frames = false
     @Published var timelineWindowBefore: TimeInterval = 10
     @Published var timelineWindowAfter: TimeInterval = 15
@@ -419,7 +419,8 @@ final class ProtocolLab: ObservableObject {
         lines.append("Generated: \(Date().ISO8601Format())")
         lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
         lines.append("Important: candidates below are incoming packets observed from glasses, not confirmed write commands. Replay only after separate approval and preferably one-by-one.")
-        lines.append("Target write characteristic if tested later: prefer FE95/005E, then FE95/005F.")
+        lines.append("APK target map: FE95/005E is SAR notify, FE95/005F is SAR write.")
+        lines.append("Target write characteristic if tested later: prefer FE95/005F and watch responses on FE95/005E.")
         lines.append("")
 
         if entries.isEmpty {

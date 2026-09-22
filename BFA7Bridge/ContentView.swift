@@ -1138,6 +1138,7 @@ private struct SVAuthLabSection: View {
         lines.append("- BizData wire format: seq + commandType=0x11 + len(encrypted) + encrypted.")
         lines.append("- CreateWifiAP inner type=00 02, content=01 wifiType 01, wrapped by AES-GCM BizData.")
         lines.append("- sessionKey = HKDF-SHA256(base64(tokenKey), salt=20..2B, info=superhexa-bind, 16 bytes).")
+        lines.append("- APK BleTaskQueueV2 target map: FE95/005E = SAR notify, FE95/005F = SAR write.")
         lines.append("")
         lines.append("Notes:")
         lines.append(contentsOf: build.notes.map { "- \($0)" })
