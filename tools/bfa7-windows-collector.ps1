@@ -78,7 +78,10 @@ Save-Json "pnp-xiaomi-bfa7-filtered.json" {
 Save-Text "usb-controllers-and-devices.txt" {
     Get-CimInstance Win32_USBControllerDevice |
         ForEach-Object {
-            $dep = [wmi]$_.Dependent
+            $dep = $_.Dependent
+            if ($dep -is [string]) {
+                $dep = [wmi]$dep
+            }
             [pscustomobject]@{
                 Name = $dep.Name
                 DeviceID = $dep.DeviceID
@@ -97,7 +100,8 @@ Save-Text "disk-drives.txt" {
 }
 
 Save-Text "portable-devices.txt" {
-    Get-PnpDevice -PresentOnly -Class WPD |
+    Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+        Where-Object { $_.Class -eq "WPD" -or $_.FriendlyName -match "MTP|PTP|Portable|Xiaomi|Glasses|BFA7" } |
         Format-List *
 }
 
