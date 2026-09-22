@@ -1096,7 +1096,11 @@ private struct SVAuthLabSection: View {
 
     private func buildStartChannel() {
         do {
-            let build = try BFA7SVProtocol.startChannel(random: random)
+            let cleanSeq = seq.filter { $0.isHexDigit }
+            let build = try BFA7SVProtocol.startChannel(
+                random: random,
+                seq: UInt8(cleanSeq.suffix(2), radix: 16) ?? 0x81
+            )
             commandHex = build.hex
             report = reportText(build)
         } catch {
@@ -1129,9 +1133,9 @@ private struct SVAuthLabSection: View {
         lines.append("HEX: \(build.hex)")
         lines.append("")
         lines.append("APK findings:")
-        lines.append("- StartChannel commandType=0x05.")
-        lines.append("- ChannelVerify commandType=0x06.")
-        lines.append("- BizData commandType=0x11.")
+        lines.append("- StartChannel wire format: seq + commandType=0x05 + len(random) + random.")
+        lines.append("- ChannelVerify wire format: seq + commandType=0x06 + len(encrypted) + encrypted.")
+        lines.append("- BizData wire format: seq + commandType=0x11 + len(encrypted) + encrypted.")
         lines.append("- CreateWifiAP inner type=00 02, content=01 wifiType 01, wrapped by AES-GCM BizData.")
         lines.append("- sessionKey = HKDF-SHA256(base64(tokenKey), salt=20..2B, info=superhexa-bind, 16 bytes).")
         lines.append("")

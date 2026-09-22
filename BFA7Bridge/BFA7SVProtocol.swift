@@ -37,16 +37,17 @@ enum BFA7SVProtocol {
     private static let hkdfSalt = Data([0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B])
     private static let hkdfInfo = Data("superhexa-bind".utf8)
 
-    static func startChannel(random: String) throws -> BFA7SVCommandBuild {
+    static func startChannel(random: String, seq: UInt8) throws -> BFA7SVCommandBuild {
         let randomBytes = Data(random.utf8)
         let content = try lengthPrefixed(randomBytes, label: "StartChannel random")
-        let command = Data([0x05]) + content
+        let command = Data([seq, 0x05]) + content
         return BFA7SVCommandBuild(
             title: "StartChannel",
             hex: command.bfa7HexString,
             notes: [
-                "APK: SendStartChannel, commandType=0x05",
-                "Content: len(random) + UTF-8 random. Xiaomi reconnect uses a 10-char random string."
+                "APK: SendStartChannel via SVBaseCommandStrategy.getData(seq).",
+                "Wire format: seq + commandType(0x05) + len(random) + UTF-8 random.",
+                "Xiaomi reconnect uses a 10-char random string."
             ]
         )
     }
@@ -65,19 +66,19 @@ enum BFA7SVProtocol {
         return key.withUnsafeBytes { Data($0) }
     }
 
-    static func channelVerifyPayload(sessionKey: Data, startChannelDeviceData: Data, random: String) throws -> BFA7SVCommandBuild {
+    static func channelVerifyPayload(sessionKey: Data, startChannelDeviceData: Data, random: String, seq: UInt8) throws -> BFA7SVCommandBuild {
         let signInput = Data(random.utf8) + startChannelDeviceData
         let signature = HMAC<SHA256>.authenticationCode(for: signInput, using: SymmetricKey(data: sessionKey))
         let encrypted = try aesGCMSeal(Data("device_info_data".utf8), keyData: sessionKey)
-        let command = Data([0x06]) + (try lengthPrefixed(encrypted, label: "ChannelVerify encrypted data"))
+        let command = Data([seq, 0x06]) + (try lengthPrefixed(encrypted, label: "ChannelVerify encrypted data"))
         return BFA7SVCommandBuild(
             title: "ChannelVerify",
             hex: command.bfa7HexString,
             notes: [
-                "APK: SendChannelVerify, commandType=0x06",
+                "APK: SendChannelVerify via SVBaseCommandStrategy.getData(seq).",
                 "Expected device signature: HMAC_SHA256(sessionKey, random + deviceData).",
                 "Computed signature for comparison: \(Data(signature).bfa7HexString)",
-                "Sent content: len(AES-GCM('device_info_data')) + encrypted bytes."
+                "Wire format: seq + commandType(0x06) + len(AES-GCM('device_info_data')) + encrypted bytes."
             ]
         )
     }
@@ -88,16 +89,16 @@ enum BFA7SVProtocol {
     }
 
     static func encryptedCreateWifiAP(sessionKey: Data, seq: UInt8, wifiType: UInt8) throws -> BFA7SVCommandBuild {
-        let inner = Data([seq, 0x00, 0x02, 0x01, wifiType, 0x01])
+        let inner = Data([0x00, 0x02, 0x01, wifiType, 0x01])
         let encrypted = try aesGCMSeal(inner, keyData: sessionKey)
-        let command = Data([0x11]) + (try lengthPrefixed(encrypted, label: "BizData encrypted data"))
+        let command = Data([seq, 0x11]) + (try lengthPrefixed(encrypted, label: "BizData encrypted data"))
         return BFA7SVCommandBuild(
             title: "BizData(CreateWifiAP)",
             hex: command.bfa7HexString,
             notes: [
                 "APK chain: SendCreateWifiAP -> SendBizData.",
-                "Inner plaintext: seq + 00 02 + 01 wifiType 01 = \(inner.bfa7HexString)",
-                "Outer commandType=0x11 BizData; content=len(AES-GCM(inner)) + IV+ciphertext+tag.",
+                "Inner encrypted plaintext: 00 02 + 01 wifiType 01 = \(inner.bfa7HexString)",
+                "Wire format: seq + commandType(0x11) + len(AES-GCM(inner)) + IV+ciphertext+tag.",
                 "Session key: \(sessionKey.bfa7HexString)"
             ]
         )
