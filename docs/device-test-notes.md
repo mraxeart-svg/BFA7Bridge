@@ -377,3 +377,18 @@ Findings:
 Implementation:
 
 - Changed the SV Auth Lab default target to the APK-confirmed SV write characteristic `AD3072F9-DCCB-4A10-989F-CA7EE37AB757/00001802-0000-1000-8000-00805F9B34FB`.
+
+## 2026-09-22 iPhone GATT screenshot: FE95 endpoint lacks SV service
+
+Source: tester screenshot from BFA7 Bridge `Device / GATT Explorer` after connecting to the visible Xiaomi AI Glasses BFA7 peripheral.
+
+Observed:
+
+- The connected GATT endpoint exposed `FE95`, `AF00`, and `FD2D`.
+- The APK-confirmed SV service `AD3072F9-DCCB-4A10-989F-CA7EE37AB757` was not present.
+
+Interpretation:
+
+- Failed `StartChannel` writes against the visible `FE95` endpoint do not disprove the APK SV protocol; they show that this specific BLE endpoint is not the SV command endpoint.
+- The app now labels scan results by advertised profile (`FE95`, `SV`, or name match), lists advertised service UUIDs, and shows `SV service` after GATT discovery.
+- Next test: scan for a separate `SV`-marked peripheral or a `FE95+SV` peripheral before running SV Auth Lab. If none appears across normal, Xiaomi-app-open, and import-mode states, the BFA7 firmware may hide the SV BLE profile from iOS or use another transport for this feature.

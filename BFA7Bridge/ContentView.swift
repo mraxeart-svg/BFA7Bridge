@@ -71,7 +71,9 @@ private struct DeviceView: View {
                                     Text("\(device.rssi) dBm").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Text(device.id.uuidString).font(.caption2).foregroundStyle(.secondary)
-                                Text("FE95: \(device.serviceData)").font(.caption2).foregroundStyle(.secondary)
+                                Text("Profile: \(device.profileHint)").font(.caption2).foregroundStyle(.secondary)
+                                Text("Services: \(device.advertisedServices)").font(.caption2).foregroundStyle(.secondary)
+                                Text("Data: \(device.serviceData)").font(.caption2).foregroundStyle(.secondary)
                                 Button("Подключиться и прочитать GATT") {
                                     glasses.connect(device)
                                 }
@@ -84,6 +86,7 @@ private struct DeviceView: View {
                 Section("Подключение") {
                     statusRow("Состояние", glasses.connectionState)
                     statusRow("GATT-сервисов", "\(glasses.serviceCount)")
+                    statusRow("SV service", glasses.svServiceState)
                     statusRow("Notify/Indicate ON", "\(glasses.notificationCount)")
                     statusRow("Writable", "\(glasses.writableCharacteristics.count)")
                     statusRow("Последняя кнопка", glasses.lastButtonEvent)

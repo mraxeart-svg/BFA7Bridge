@@ -12,6 +12,8 @@ struct BFA7Device: Identifiable, Hashable {
     let name: String
     let rssi: Int
     let serviceData: String
+    let profileHint: String
+    let advertisedServices: String
 }
 
 struct BFA7GATTCharacteristic: Identifiable, Hashable {

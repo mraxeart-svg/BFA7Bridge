@@ -10,6 +10,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     @Published private(set) var log: [String] = []
     @Published private(set) var connectionState = "Не подключено"
     @Published private(set) var serviceCount = 0
+    @Published private(set) var svServiceState = "Не проверено"
     @Published private(set) var notificationCount = 0
     @Published private(set) var gattServices: [BFA7GATTService] = []
     @Published private(set) var writableCharacteristics: [String] = []
@@ -41,6 +42,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     private var writableCharacteristicKeys: Set<String> = []
     private var writableCharacteristicRefs: [CBCharacteristic] = []
     private let miBeaconService = CBUUID(string: "FE95")
+    private let svCommandService = CBUUID(string: "AD3072F9-DCCB-4A10-989F-CA7EE37AB757")
 
     override init() {
         super.init()
@@ -57,6 +59,7 @@ final class GlassesTransport: NSObject, ObservableObject {
         peripherals.removeAll()
         currentPeripheral = nil
         serviceCount = 0
+        svServiceState = "Не проверено"
         notificationCount = 0
         writableCharacteristics.removeAll()
         writableCharacteristicRefs.removeAll()
@@ -267,11 +270,12 @@ final class GlassesTransport: NSObject, ObservableObject {
         lines.append("Bluetooth: \(stateDescription)")
         lines.append("Connection: \(connectionState)")
         lines.append("Services: \(serviceCount)")
+        lines.append("SV service: \(svServiceState)")
         lines.append("Notify/Indicate enabled: \(notificationCount)")
         lines.append("Writable characteristics: \(writableCharacteristics.joined(separator: ", "))")
         lines.append("Devices:")
         for device in devices {
-            lines.append("  \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi) dBm | FE95=\(device.serviceData)")
+            lines.append("  \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi) dBm | profile=\(device.profileHint) | services=\(device.advertisedServices) | data=\(device.serviceData)")
         }
         lines.append("")
         lines.append("Events:")
@@ -399,25 +403,52 @@ extension GlassesTransport: CBCentralManagerDelegate {
 
         let serviceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
         let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? [:]
-        let hasFE95 = serviceUUIDs.contains { $0 == miBeaconService }
+        let advertisedUUIDs = Set(serviceUUIDs + Array(serviceData.keys))
+        let hasFE95 = advertisedUUIDs.contains(miBeaconService)
+        let hasSV = advertisedUUIDs.contains(svCommandService)
         let fe95Data = serviceData.first(where: { $0.key == miBeaconService })?.value
+        let svData = serviceData.first(where: { $0.key == svCommandService })?.value
 
         let looksLikeBFA7 = hasFE95
+            || hasSV
             || name.localizedCaseInsensitiveContains("BFA7")
             || name.localizedCaseInsensitiveContains("Xiaomi AI Glasses")
             || name.localizedCaseInsensitiveContains("AI Glasses")
 
         guard looksLikeBFA7 else { return }
 
-        let hex = fe95Data?.map { String(format: "%02X", $0) }.joined(separator: " ") ?? "—"
-        let device = BFA7Device(id: peripheral.identifier, name: name, rssi: RSSI.intValue, serviceData: hex)
+        let dataSummary = [
+            fe95Data.map { "FE95=" + $0.bfa7ShortHexString },
+            svData.map { "SV=" + $0.bfa7ShortHexString }
+        ].compactMap { $0 }.joined(separator: "; ")
+        let serviceSummary = advertisedUUIDs
+            .map(\.uuidString)
+            .sorted()
+            .joined(separator: ", ")
+        let profileHint = [
+            hasFE95 ? "FE95" : nil,
+            hasSV ? "SV" : nil,
+            name.localizedCaseInsensitiveContains("BFA7") || name.localizedCaseInsensitiveContains("AI Glasses") ? "name" : nil
+        ].compactMap { $0 }.joined(separator: "+")
+        let device = BFA7Device(
+            id: peripheral.identifier,
+            name: name,
+            rssi: RSSI.intValue,
+            serviceData: dataSummary.isEmpty ? "—" : dataSummary,
+            profileHint: profileHint.isEmpty ? "unknown" : profileHint,
+            advertisedServices: serviceSummary.isEmpty ? "—" : serviceSummary
+        )
         peripherals[peripheral.identifier] = peripheral
 
         if let index = devices.firstIndex(where: { $0.id == device.id }) {
             devices[index] = device
         } else {
             devices.append(device)
-            appendLog("BFA7 найден: RSSI=\(RSSI.intValue) dBm, FE95=[\(hex)]", kind: .discovery)
+            appendLog(
+                "\(hasSV ? "BFA7 SV найден" : "BFA7 найден"): RSSI=\(RSSI.intValue) dBm, profile=\(device.profileHint), services=[\(device.advertisedServices)]",
+                kind: .discovery,
+                detail: device.serviceData
+            )
         }
     }
 
@@ -447,6 +478,7 @@ extension GlassesTransport: CBCentralManagerDelegate {
                 currentPeripheral = nil
             }
             connectionState = "Отключено"
+            svServiceState = "Не проверено"
             notificationCount = 0
             writableCharacteristics.removeAll()
             writableCharacteristicRefs.removeAll()
@@ -468,8 +500,9 @@ extension GlassesTransport: CBPeripheralDelegate {
             }
 
             serviceCount = services.count
+            svServiceState = services.contains { $0.uuid == svCommandService } ? "Найден" : "Нет в текущем GATT"
             gattServices = services.map { BFA7GATTService(id: $0.uuid.uuidString, uuid: $0.uuid.uuidString, characteristics: []) }
-            appendLog("GATT: найдено сервисов \(services.count)", kind: .discovery)
+            appendLog("GATT: найдено сервисов \(services.count), SV=\(svServiceState)", kind: .discovery)
 
             for service in services {
                 appendLog("Service: \(service.uuid.uuidString)", kind: .discovery)
@@ -559,6 +592,13 @@ private extension CBCharacteristicProperties {
 }
 
 private extension Data {
+    var bfa7ShortHexString: String {
+        let limit = 24
+        let prefixData = prefix(limit)
+        let hex = prefixData.map { String(format: "%02X", $0) }.joined(separator: " ")
+        return count > limit ? "\(hex) ... +\(count - limit) B" : hex
+    }
+
     init?(hexString: String) {
         let cleaned = hexString
             .replacingOccurrences(of: "0x", with: "")
