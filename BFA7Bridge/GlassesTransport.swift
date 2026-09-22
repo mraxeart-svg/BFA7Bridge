@@ -22,6 +22,9 @@ final class GlassesTransport: NSObject, ObservableObject {
     @Published private(set) var importExperimentState = "Ожидание"
     @Published private(set) var importExperimentStartedAt: Date?
     @Published private(set) var importExperimentMarkedAt: Date?
+    @Published private(set) var gattHunterState = "Ожидание"
+    @Published private(set) var gattHunterReport = "GATT/SV Hunter not run"
+    @Published private(set) var isGATTHunterRunning = false
     @Published private(set) var capabilities: [BFA7Capability] = [
         .init(id: "ble", title: "Bluetooth LE", status: "Готов"),
         .init(id: "gatt", title: "GATT Explorer", status: "Готов"),
@@ -43,6 +46,7 @@ final class GlassesTransport: NSObject, ObservableObject {
     private var writableCharacteristicKeys: Set<String> = []
     private var writableCharacteristicRefs: [CBCharacteristic] = []
     private var connectionTimeoutTask: Task<Void, Never>?
+    private var gattHunterTask: Task<Void, Never>?
     private let miBeaconService = CBUUID(string: "FE95")
     private let svCommandService = CBUUID(string: "AD3072F9-DCCB-4A10-989F-CA7EE37AB757")
     private let uartService = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -121,6 +125,34 @@ final class GlassesTransport: NSObject, ObservableObject {
         resetGATTState(clearPeripheral: true)
         connectionState = "Сброшено"
         appendLog("BLE-подключение сброшено", kind: .connection)
+    }
+
+    func startGATTHunter(scanSeconds: TimeInterval = 8, perDeviceSeconds: TimeInterval = 8) {
+        guard state == .poweredOn else {
+            gattHunterState = "Bluetooth недоступен"
+            appendLog("GATT/SV Hunter: Bluetooth недоступен", kind: .error)
+            return
+        }
+        guard !isGATTHunterRunning else { return }
+
+        gattHunterTask?.cancel()
+        isGATTHunterRunning = true
+        gattHunterState = "Сканирование кандидатов"
+        gattHunterReport = "BFA7 GATT/SV Hunter\nGenerated: \(Date().ISO8601Format())\nStatus: scanning"
+        appendLog("GATT/SV Hunter START", kind: .discovery)
+
+        gattHunterTask = Task { [weak self] in
+            await self?.runGATTHunter(scanSeconds: scanSeconds, perDeviceSeconds: perDeviceSeconds)
+        }
+    }
+
+    func stopGATTHunter() {
+        gattHunterTask?.cancel()
+        gattHunterTask = nil
+        isGATTHunterRunning = false
+        gattHunterState = "Остановлено"
+        disconnect()
+        appendLog("GATT/SV Hunter STOP", kind: .discovery)
     }
 
     func startButtonExperiment() {
@@ -311,6 +343,132 @@ final class GlassesTransport: NSObject, ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+
+    private func runGATTHunter(scanSeconds: TimeInterval, perDeviceSeconds: TimeInterval) async {
+        var lines: [String] = []
+        lines.append("BFA7 GATT/SV Hunter")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Goal: locate APK-confirmed SV BLE endpoint for StartChannel/ChannelVerify/CreateWifiAP.")
+        lines.append("SV target service: \(svCommandService.uuidString)")
+        lines.append("Expected write characteristic: 00001802-0000-1000-8000-00805F9B34FB")
+        lines.append("Mode: read-only GATT discovery; no command writes.")
+        lines.append("")
+
+        startScan()
+        gattHunterState = "Сканирование \(Int(scanSeconds))s"
+        try? await Task.sleep(nanoseconds: UInt64(scanSeconds * 1_000_000_000))
+        guard !Task.isCancelled else {
+            finishGATTHunter(lines: lines, state: "Остановлено")
+            return
+        }
+        stopScan()
+
+        let candidates = devices.sorted { left, right in
+            let leftScore = gattHunterScore(left)
+            let rightScore = gattHunterScore(right)
+            if leftScore == rightScore { return left.rssi > right.rssi }
+            return leftScore > rightScore
+        }
+
+        lines.append("Candidates: \(candidates.count)")
+        for device in candidates {
+            lines.append("- \(device.name) | UUID=\(device.id.uuidString) | RSSI=\(device.rssi)dBm | profile=\(device.profileHint) | services=\(device.advertisedServices) | data=\(device.serviceData)")
+        }
+        lines.append("")
+        gattHunterReport = lines.joined(separator: "\n")
+
+        guard !candidates.isEmpty else {
+            finishGATTHunter(lines: lines, state: "Кандидаты не найдены")
+            return
+        }
+
+        for (index, device) in candidates.enumerated() {
+            guard !Task.isCancelled else {
+                finishGATTHunter(lines: lines, state: "Остановлено")
+                return
+            }
+
+            gattHunterState = "GATT \(index + 1)/\(candidates.count): \(device.name)"
+            lines.append("---")
+            lines.append("Candidate \(index + 1)/\(candidates.count): \(device.name)")
+            lines.append("UUID: \(device.id.uuidString)")
+            lines.append("RSSI: \(device.rssi)dBm")
+            lines.append("Advertised profile: \(device.profileHint)")
+            lines.append("Advertised services: \(device.advertisedServices)")
+            lines.append("Advertised data: \(device.serviceData)")
+
+            connect(device)
+            try? await Task.sleep(nanoseconds: UInt64(perDeviceSeconds * 1_000_000_000))
+
+            lines.append(gattHunterSnapshot(for: device))
+            gattHunterReport = lines.joined(separator: "\n")
+            disconnect()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+
+        let foundSV = lines.contains { $0.contains("SV endpoint: FOUND") }
+        finishGATTHunter(lines: lines, state: foundSV ? "SV найден" : "SV не найден")
+    }
+
+    private func finishGATTHunter(lines: [String], state: String) {
+        var finalLines = lines
+        finalLines.append("")
+        finalLines.append("Final state: \(state)")
+        finalLines.append("Generated end: \(Date().ISO8601Format())")
+        gattHunterReport = finalLines.joined(separator: "\n")
+        gattHunterState = state
+        isGATTHunterRunning = false
+        gattHunterTask = nil
+        appendLog("GATT/SV Hunter: \(state)", kind: .discovery)
+    }
+
+    private func gattHunterScore(_ device: BFA7Device) -> Int {
+        var score = device.rssi
+        if device.profileHint.localizedCaseInsensitiveContains("SV") { score += 300 }
+        if device.profileHint.localizedCaseInsensitiveContains("FE95") { score += 120 }
+        if device.profileHint.localizedCaseInsensitiveContains("name") { score += 80 }
+        if device.name.localizedCaseInsensitiveContains("Xiaomi AI Glasses") { score += 80 }
+        return score
+    }
+
+    private func gattHunterSnapshot(for device: BFA7Device) -> String {
+        let upperWritable = writableCharacteristics.map { $0.uppercased() }
+        let hasSVService = gattServices.contains { $0.uuid.uppercased() == svCommandService.uuidString.uppercased() }
+        let svWritable = upperWritable.contains { item in
+            item.contains(svCommandService.uuidString.uppercased()) && item.contains("00001802-0000-1000-8000-00805F9B34FB")
+        }
+        let hasFE95 = gattServices.contains { $0.uuid.uppercased() == miBeaconService.uuidString.uppercased() }
+        let hasUART = gattServices.contains { $0.uuid.uppercased() == uartService.uuidString.uppercased() }
+
+        var lines: [String] = []
+        lines.append("Connection state: \(connectionState)")
+        lines.append("Services discovered: \(serviceCount)")
+        lines.append("SV service: \(hasSVService ? "FOUND" : "not found")")
+        lines.append("SV endpoint: \(svWritable ? "FOUND" : "not found")")
+        lines.append("FE95 service: \(hasFE95 ? "FOUND" : "not found")")
+        lines.append("UART service: \(hasUART ? "FOUND" : "not found")")
+        lines.append("Writable characteristics: \(writableCharacteristics.isEmpty ? "none" : writableCharacteristics.joined(separator: ", "))")
+        lines.append("Notify/Indicate ON: \(notificationCount)")
+        lines.append("GATT:")
+
+        if gattServices.isEmpty {
+            lines.append("  none")
+        } else {
+            for service in gattServices.sorted(by: { $0.uuid < $1.uuid }) {
+                lines.append("  \(service.uuid)")
+                if service.characteristics.isEmpty {
+                    lines.append("    characteristics: pending/none")
+                } else {
+                    for characteristic in service.characteristics.sorted(by: { $0.uuid < $1.uuid }) {
+                        let notifySuffix = characteristic.notifying ? " · ON" : ""
+                        lines.append("    \(characteristic.uuid) | \(characteristic.properties)\(notifySuffix)")
+                    }
+                }
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
 
     private func armConnectionTimeout(for peripheral: CBPeripheral, seconds: TimeInterval) {
         let peripheralID = peripheral.identifier

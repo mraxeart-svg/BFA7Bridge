@@ -638,6 +638,7 @@ private struct LabView: View {
             List {
                 ImportLabSection()
                 SVAuthLabSection()
+                GATTSVHunterSection()
                 ProtocolLabSection()
                 WiFiImportChecklistSection()
             }
@@ -1258,6 +1259,56 @@ private struct SVAuthLabSection: View {
         return lines.joined(separator: "\n")
     }
 }
+
+private struct GATTSVHunterSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+    @State private var scanSeconds = 8.0
+    @State private var perDeviceSeconds = 8.0
+
+    var body: some View {
+        Section("GATT/SV Hunter") {
+            Text("Ищет настоящий SV endpoint для APK-пути StartChannel -> ChannelVerify -> CreateWifiAP. Только читает GATT, write-команды не отправляет.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Text("Состояние")
+                Spacer()
+                Text(glasses.gattHunterState)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            Stepper("Scan \(Int(scanSeconds))s", value: $scanSeconds, in: 4...20, step: 1)
+            Stepper("Per device \(Int(perDeviceSeconds))s", value: $perDeviceSeconds, in: 5...18, step: 1)
+
+            HStack {
+                Button("Start hunter") {
+                    glasses.startGATTHunter(scanSeconds: scanSeconds, perDeviceSeconds: perDeviceSeconds)
+                }
+                .disabled(glasses.isGATTHunterRunning || glasses.state != .poweredOn)
+
+                Spacer()
+
+                Button("Stop hunter") {
+                    glasses.stopGATTHunter()
+                }
+                .disabled(!glasses.isGATTHunterRunning)
+            }
+
+            Button("Copy hunter report") {
+                UIPasteboard.general.string = glasses.gattHunterReport
+            }
+
+            Text(glasses.gattHunterReport)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(18)
+                .textSelection(.enabled)
+        }
+    }
+}
+
 
 private struct ProtocolLabSection: View {
     @EnvironmentObject private var glasses: GlassesTransport

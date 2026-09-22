@@ -501,3 +501,22 @@ Implementation response:
 
 - Added `tools/extract_wearpacket_builders.py` to list every visible `WearPacket` constructor/field assignment in the APK.
 - Kept FE95 replay tooling as diagnostic-only; do not treat it as the main route unless a real outgoing Xiaomi write is captured.
+
+## 2026-09-22 GATT/SV Hunter
+
+Goal: stop blind import-trigger scanning and first prove whether the APK-confirmed SV BLE endpoint is visible from iOS.
+
+Implementation:
+
+- Added `GATT/SV Hunter` in Lab.
+- The hunter performs read-only discovery: scan BFA7/FE95/SV candidates, connect to each, read full GATT, then report services, writable characteristics, notify state, and whether the APK SV endpoint is present.
+- Expected SV path remains service `AD3072F9-DCCB-4A10-989F-CA7EE37AB757`, write characteristic `00001802-0000-1000-8000-00805F9B34FB`.
+- No BLE write commands are sent by this hunter.
+
+Next device test:
+
+1. Open Lab -> GATT/SV Hunter.
+2. Set Scan to 8-12s and Per device to 10-15s if the environment has weak candidates.
+3. Tap Start hunter and wait for final state.
+4. Copy hunter report.
+5. If `SV endpoint: FOUND`, run SV Auth Lab against that target. If not found across normal/Xiaomi-app-open/import states, iOS likely cannot see the SV command profile and we should continue with APK/dynamic-log extraction.
