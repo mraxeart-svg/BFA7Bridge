@@ -397,9 +397,13 @@ extension GlassesTransport: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String : Any],
                         rssi RSSI: NSNumber) {
-        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
-            ?? peripheral.name
-            ?? "BFA7 / неизвестное имя"
+        let advertisedName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name
+        let name = advertisedName ?? "BLE device / неизвестное имя"
+        let nameLooksLikeBFA7 = advertisedName.map {
+            $0.localizedCaseInsensitiveContains("BFA7")
+                || $0.localizedCaseInsensitiveContains("Xiaomi AI Glasses")
+                || $0.localizedCaseInsensitiveContains("AI Glasses")
+        } ?? false
 
         let serviceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
         let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? [:]
@@ -409,11 +413,7 @@ extension GlassesTransport: CBCentralManagerDelegate {
         let fe95Data = serviceData.first(where: { $0.key == miBeaconService })?.value
         let svData = serviceData.first(where: { $0.key == svCommandService })?.value
 
-        let looksLikeBFA7 = hasFE95
-            || hasSV
-            || name.localizedCaseInsensitiveContains("BFA7")
-            || name.localizedCaseInsensitiveContains("Xiaomi AI Glasses")
-            || name.localizedCaseInsensitiveContains("AI Glasses")
+        let looksLikeBFA7 = hasFE95 || hasSV || nameLooksLikeBFA7
 
         guard looksLikeBFA7 else { return }
 
@@ -428,7 +428,7 @@ extension GlassesTransport: CBCentralManagerDelegate {
         let profileHint = [
             hasFE95 ? "FE95" : nil,
             hasSV ? "SV" : nil,
-            name.localizedCaseInsensitiveContains("BFA7") || name.localizedCaseInsensitiveContains("AI Glasses") ? "name" : nil
+            nameLooksLikeBFA7 ? "name" : nil
         ].compactMap { $0 }.joined(separator: "+")
         let device = BFA7Device(
             id: peripheral.identifier,

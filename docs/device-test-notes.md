@@ -392,3 +392,12 @@ Interpretation:
 - Failed `StartChannel` writes against the visible `FE95` endpoint do not disprove the APK SV protocol; they show that this specific BLE endpoint is not the SV command endpoint.
 - The app now labels scan results by advertised profile (`FE95`, `SV`, or name match), lists advertised service UUIDs, and shows `SV service` after GATT discovery.
 - Next test: scan for a separate `SV`-marked peripheral or a `FE95+SV` peripheral before running SV Auth Lab. If none appears across normal, Xiaomi-app-open, and import-mode states, the BFA7 firmware may hide the SV BLE profile from iOS or use another transport for this feature.
+
+## 2026-09-22 scan false-positive cleanup
+
+Tester saw multiple `BFA7 / неизвестное имя` rows plus a `T700_54` row after adding SV advertisement scanning.
+
+Interpretation:
+
+- `T700_54` advertises `FE95`, so it is a real Xiaomi/MiBeacon-style candidate but not the APK-confirmed SV profile. It may be unrelated unless its connected GATT matches BFA7 behavior.
+- The previous UI fallback name included `BFA7`, which made nameless nearby BLE devices pass the name filter. The scanner now checks BFA7/Xiaomi name matches only against real advertised/peripheral names, not fallback text.
