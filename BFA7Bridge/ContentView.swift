@@ -234,6 +234,10 @@ private struct CaptureView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    Button("Copy capture report") {
+                        UIPasteboard.general.string = systemCapture.lastReport
+                    }
+
                     captureItems("Video", systemCapture.videoDevices)
                     captureItems("Audio input", systemCapture.audioInputs)
                     captureItems("Audio output", systemCapture.audioRouteOutputs)

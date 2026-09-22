@@ -20,6 +20,7 @@ final class SystemCaptureProbe: ObservableObject {
     @Published private(set) var audioInputs: [BFA7SystemCaptureItem] = []
     @Published private(set) var audioRouteOutputs: [BFA7SystemCaptureItem] = []
     @Published private(set) var status = "Ожидание"
+    @Published private(set) var lastReport = "No system capture report yet."
 
     func requestPermissionsAndRefresh() async {
         let cameraAllowed = await AVCaptureDevice.requestAccess(for: .video)
@@ -32,7 +33,9 @@ final class SystemCaptureProbe: ObservableObject {
         videoDevices = discoverVideoDevices()
         refreshAudioRoute()
         let candidates = (videoDevices + audioInputs + audioRouteOutputs).filter(\.isBFA7Candidate).count
-        status = "Video \(videoDevices.count), audio inputs \(audioInputs.count), route outputs \(audioRouteOutputs.count), BFA7 candidates \(candidates)"
+        let externalVideoCount = videoDevices.filter(\.isExternalVideo).count
+        status = "Video \(videoDevices.count), external video \(externalVideoCount), audio inputs \(audioInputs.count), route outputs \(audioRouteOutputs.count), BFA7 candidates \(candidates)"
+        lastReport = makeReport()
     }
 
     private func discoverVideoDevices() -> [BFA7SystemCaptureItem] {
@@ -104,5 +107,36 @@ final class SystemCaptureProbe: ObservableObject {
         case .unspecified: return "unspecified"
         @unknown default: return "unknown"
         }
+    }
+
+    private func makeReport() -> String {
+        var lines: [String] = []
+        lines.append("BFA7 System Capture Report")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Status: \(status)")
+        lines.append("")
+        append("Video", videoDevices, to: &lines)
+        append("Audio input", audioInputs, to: &lines)
+        append("Audio output", audioRouteOutputs, to: &lines)
+        return lines.joined(separator: "\n")
+    }
+
+    private func append(_ title: String, _ items: [BFA7SystemCaptureItem], to lines: inout [String]) {
+        lines.append("\(title): \(items.count)")
+        if items.isEmpty {
+            lines.append("  none")
+        } else {
+            for item in items {
+                let marker = item.isBFA7Candidate ? " [BFA7?]" : ""
+                lines.append("  \(item.name)\(marker) | \(item.detail)")
+            }
+        }
+        lines.append("")
+    }
+}
+
+private extension BFA7SystemCaptureItem {
+    var isExternalVideo: Bool {
+        kind == "video" && detail.localizedCaseInsensitiveContains("external")
     }
 }
