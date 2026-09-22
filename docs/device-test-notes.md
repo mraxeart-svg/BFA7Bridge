@@ -448,3 +448,14 @@ Implementation response:
 
 - Added `Copy Wi-Fi credential candidates` in Import Lab. It exports full HEX/ASCII for incoming 60-90B frames around the Import mark so we can compare BFA7 frames with the public 67-byte credential-response clue.
 - This is now the preferred next capture before any more replay attempts.
+
+
+## 2026-09-22 wide Import session capture
+
+The first build 49 paired witness proved that Xiaomi app can still start the BFA7 Wi-Fi AP, because `/v1/filelists` returned HTTP 200 from `192.168.43.1:8080`. However, the narrow credential candidate report saw no 60-90B incoming frame around the manual Mark.
+
+Implementation response:
+
+- Added `Copy all large incoming frames`, which scans from `Start import experiment` through `Mark + 15s` instead of only the narrow Mark window.
+- The report includes incoming frames with `byteCount >= 40` or declared A5 payload length `>= 32`, preserving full HEX/ASCII for protocol comparison.
+- The wide report is also embedded in `Copy paired import witness` so the next test captures it even if the separate button is missed.

@@ -380,6 +380,16 @@ final class ProtocolLab: ObservableObject {
         .sorted { $0.relativeSeconds < $1.relativeSeconds }
     }
 
+    func importSessionEntries(start: Date?, mark: Date?) -> [BFA7TimelineEntry] {
+        guard let start else { return packets.suffix(200).map { BFA7TimelineEntry(relativeSeconds: 0, packet: $0) } }
+        let end = (mark ?? Date()).addingTimeInterval(timelineWindowAfter)
+        return packets.compactMap { packet in
+            guard packet.date >= start && packet.date <= end else { return nil }
+            return BFA7TimelineEntry(relativeSeconds: packet.date.timeIntervalSince(start), packet: packet)
+        }
+        .sorted { $0.relativeSeconds < $1.relativeSeconds }
+    }
+
     func importJSONExport(around date: Date?) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -426,6 +436,43 @@ final class ProtocolLab: ObservableObject {
         } else {
             for entry in candidates {
                 lines.append("\(entry.relativeLabel) | <- \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
+                lines.append("HEX: \(entry.packet.hex)")
+                lines.append("ASCII: \(entry.packet.ascii)")
+                lines.append("")
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    func importLargeIncomingSessionReport(start: Date?, mark: Date?) -> String {
+        let entries = importSessionEntries(start: start, mark: mark)
+        let candidates = entries.filter { entry in
+            entry.packet.direction == .incoming &&
+            (entry.packet.byteCount >= 40 || (entry.packet.frame?.declaredLength ?? 0) >= 32)
+        }
+        let candidateBySize = Dictionary(grouping: candidates) { entry in entry.packet.byteCount }
+            .map { key, value in "\(key)B x\(value.count)" }
+            .sorted()
+            .joined(separator: ", ")
+
+        var lines: [String] = []
+        lines.append("BFA7 Import Large Incoming Session Frames")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Start: \(start?.ISO8601Format() ?? "not marked")")
+        lines.append("Mark: \(mark?.ISO8601Format() ?? "not marked")")
+        let endLabel = mark == nil ? "now" : "Mark+\(String(format: "%.1f", timelineWindowAfter))s"
+        lines.append("Window: Start...\(endLabel)")
+        lines.append("Reason: catch possible Xiaomi app credential/status responses even if Mark was pressed after the important BLE frame.")
+        lines.append("Filter: incoming frames with byteCount >= 40 or declared payload length >= 32.")
+        lines.append("Counts: sessionPackets=\(entries.count), candidates=\(candidates.count), candidateSizes=[\(candidateBySize)]")
+        lines.append("")
+
+        if candidates.isEmpty {
+            lines.append("No large incoming candidate frames in the whole Import session.")
+        } else {
+            for entry in candidates {
+                lines.append("\(entry.relativeLabel) from Start | <- \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
                 lines.append("HEX: \(entry.packet.hex)")
                 lines.append("ASCII: \(entry.packet.ascii)")
                 lines.append("")

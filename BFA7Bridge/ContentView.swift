@@ -711,6 +711,14 @@ private struct ImportLabSection: View {
             }
             .disabled(protocolLab.packets.isEmpty)
 
+            Button("Copy all large incoming frames") {
+                UIPasteboard.general.string = protocolLab.importLargeIncomingSessionReport(
+                    start: glasses.importExperimentStartedAt,
+                    mark: glasses.importExperimentMarkedAt
+                )
+            }
+            .disabled(protocolLab.packets.isEmpty)
+
             Button("Copy import JSON") {
                 UIPasteboard.general.string = protocolLab.importJSONExport(around: glasses.importExperimentMarkedAt)
             }
@@ -876,7 +884,7 @@ private struct ImportLabSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy paired import witness + Copy Wi-Fi credential candidates. iOS не показывает BLE write, отправленный Xiaomi app; отчёт фиксирует только наши write и ответы очков.")
+            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy paired import witness + Copy Wi-Fi credential candidates + Copy all large incoming frames. iOS не показывает BLE write, отправленный Xiaomi app; отчёт фиксирует только наши write и ответы очков.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -891,6 +899,11 @@ private struct ImportLabSection: View {
     private var pairedImportWitnessText: String {
         var lines: [String] = []
         lines.append(protocolLab.importWitnessReport(around: glasses.importExperimentMarkedAt))
+        lines.append("")
+        lines.append(protocolLab.importLargeIncomingSessionReport(
+            start: glasses.importExperimentStartedAt,
+            mark: glasses.importExperimentMarkedAt
+        ))
         lines.append("")
         lines.append("Wi-Fi/media state:")
         lines.append("Status: \(media.status)")
