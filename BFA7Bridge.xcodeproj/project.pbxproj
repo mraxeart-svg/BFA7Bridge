@@ -23,6 +23,7 @@
 		AA000000000000000000001E /* WiFiImportLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002E /* WiFiImportLab.swift */; };
 		AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002F /* SystemCaptureProbe.swift */; };
 		AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000091 /* SpeechTranscriber.swift */; };
+		AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000093 /* BFA7SVProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		AA000000000000000000002E /* WiFiImportLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiFiImportLab.swift; sourceTree = "<group>"; };
 		AA000000000000000000002F /* SystemCaptureProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCaptureProbe.swift; sourceTree = "<group>"; };
 		AA0000000000000000000091 /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
+		AA0000000000000000000093 /* BFA7SVProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7SVProtocol.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +82,7 @@
 				AA000000000000000000002B /* CommandSession.swift */,
 				AA000000000000000000002C /* BFA7AppIntents.swift */,
 				AA000000000000000000002D /* ProtocolLab.swift */,
+				AA0000000000000000000093 /* BFA7SVProtocol.swift */,
 				AA000000000000000000002E /* WiFiImportLab.swift */,
 				AA000000000000000000002F /* SystemCaptureProbe.swift */,
 				AA0000000000000000000024 /* Info.plist */,
@@ -172,6 +175,7 @@
 				AA000000000000000000001E /* WiFiImportLab.swift in Sources */,
 				AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */,
 				AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */,
+				AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

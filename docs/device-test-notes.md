@@ -329,3 +329,20 @@ Implementation note:
 - The UI can replace the target list with currently discovered writable characteristics.
 - Payload variants now include: `apkSeq`, `noSeq`, `seqNoTail`, `noSeqNoTail`, `seqTypeOnly`, and `noSeqTypeOnly`.
 - The scan report keeps the latest attempt lines visible while retaining full success context if a match is found.
+
+## 2026-09-21 APK SV auth path identified
+
+Source: local APK analysis of the Xiaomi Glasses app shared by the tester.
+
+Findings:
+
+- The Import/AP trigger is not a plain `00 02 01 wifiType 01` write. `SendCreateWifiAP` is marked encrypted.
+- Xiaomi wraps `CreateWifiAP` inside `SendBizData`: inner plaintext is `seq 00 02 01 <wifiType> 01`; outer command type is `0x11`; payload is AES-GCM `IV + ciphertext + tag` with a one-byte length prefix.
+- The AES-GCM key is a session key created during the SV channel flow. Reconnect path: `SendStartChannel` (`0x05`) -> derive `sessionKey = HKDF-SHA256(tokenKey, salt 20..2B, info superhexa-bind, 16 bytes)` -> `SendChannelVerify` (`0x06`) -> encrypted BizData commands.
+- `CreateWifiAP` response type `0x0002` decodes into `WifiAPData`: code, SSID, passphrase, and IP.
+- The previous auto scanner was useful as a negative test but is now considered heuristic/legacy. The next deterministic milestone is reproducing the SV auth/channel flow or importing the saved Xiaomi `tokenKey`.
+
+Implementation:
+
+- Added `BFA7SVProtocol.swift` with APK-derived HKDF/AES-GCM command builders and WifiAPData parser.
+- Added `SV Auth Lab` UI to build `StartChannel` and encrypted `BizData(CreateWifiAP)` reports instead of relying on blind command variants.

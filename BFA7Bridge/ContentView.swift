@@ -607,6 +607,7 @@ private struct LabView: View {
         NavigationStack {
             List {
                 ImportLabSection()
+                SVAuthLabSection()
                 ProtocolLabSection()
                 WiFiImportChecklistSection()
             }
@@ -999,6 +1000,146 @@ private struct ImportLabSection: View {
         importAutoScanTask?.cancel()
         importAutoScanTask = nil
         autoScanStatus = "Остановлено"
+    }
+}
+
+
+private struct SVAuthLabSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+    @State private var target = BFA7SVProtocol.defaultTarget
+    @State private var random = "BFA7BRIDGE"
+    @State private var tokenKey = ""
+    @State private var seq = "81"
+    @State private var wifiType = 2
+    @State private var commandHex = ""
+    @State private var report = "Ожидание"
+
+    var body: some View {
+        Section("SV Auth Lab") {
+            Text("APK-derived path: StartChannel -> sessionKey -> ChannelVerify -> encrypted BizData(CreateWifiAP). Это главный путь вместо перебора.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField("Target characteristic", text: $target)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            TextField("StartChannel random", text: $random)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            Button("Generate random") {
+                random = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10))
+            }
+
+            TextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey, axis: .vertical)
+                .lineLimit(2...4)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            HStack {
+                Text("seq")
+                TextField("81", text: $seq)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+                    .frame(maxWidth: 70)
+
+                Spacer()
+
+                Stepper("wifiType \(wifiType)", value: $wifiType, in: 0...4)
+                    .labelsHidden()
+                Text("wifiType \(wifiType)")
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Build StartChannel") {
+                    buildStartChannel()
+                }
+
+                Spacer()
+
+                Button("Build encrypted Import") {
+                    buildEncryptedImport()
+                }
+            }
+
+            HStack {
+                Button("Write SV command") {
+                    _ = glasses.writeHexCommand(commandHex, target: target)
+                }
+                .disabled(commandHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Spacer()
+
+                Button("Copy SV report") {
+                    UIPasteboard.general.string = report
+                }
+            }
+
+            if !commandHex.isEmpty {
+                Text(commandHex)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
+            }
+
+            Text(report)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func buildStartChannel() {
+        do {
+            let build = try BFA7SVProtocol.startChannel(random: random)
+            commandHex = build.hex
+            report = reportText(build)
+        } catch {
+            report = "StartChannel build failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func buildEncryptedImport() {
+        do {
+            let key = try BFA7SVProtocol.sessionKey(tokenKeyText: tokenKey)
+            let cleanSeq = seq.filter { $0.isHexDigit }
+            let build = try BFA7SVProtocol.encryptedCreateWifiAP(
+                sessionKey: key,
+                seq: UInt8(cleanSeq.suffix(2), radix: 16) ?? 0x81,
+                wifiType: UInt8(wifiType & 0xff)
+            )
+            commandHex = build.hex
+            report = reportText(build)
+        } catch {
+            report = "Encrypted import build failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func reportText(_ build: BFA7SVCommandBuild) -> String {
+        var lines: [String] = []
+        lines.append("BFA7 SV Auth Build")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Command: \(build.title)")
+        lines.append("Target: \(target)")
+        lines.append("HEX: \(build.hex)")
+        lines.append("")
+        lines.append("APK findings:")
+        lines.append("- StartChannel commandType=0x05.")
+        lines.append("- ChannelVerify commandType=0x06.")
+        lines.append("- BizData commandType=0x11.")
+        lines.append("- CreateWifiAP inner type=00 02, content=01 wifiType 01, wrapped by AES-GCM BizData.")
+        lines.append("- sessionKey = HKDF-SHA256(base64(tokenKey), salt=20..2B, info=superhexa-bind, 16 bytes).")
+        lines.append("")
+        lines.append("Notes:")
+        lines.append(contentsOf: build.notes.map { "- \($0)" })
+        lines.append("")
+        lines.append("Important: encrypted BizData is expected to work only after the same BLE session has passed StartChannel/ChannelVerify.")
+        return lines.joined(separator: "\n")
     }
 }
 
