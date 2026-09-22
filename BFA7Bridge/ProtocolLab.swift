@@ -405,6 +405,36 @@ final class ProtocolLab: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+    func importWiFiCredentialCandidateReport(around date: Date?) -> String {
+        let candidates = importWindowEntries(around: date)
+            .filter { entry in
+                entry.packet.direction == .incoming &&
+                entry.packet.byteCount >= 60 &&
+                entry.packet.byteCount <= 90
+            }
+
+        var lines: [String] = []
+        lines.append("BFA7 Import Wi-Fi Credential Candidate Frames")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
+        lines.append("Reason: public Xiaomi AI Glasses notes report a 67-byte BLE response containing dynamic Wi-Fi AP credentials after photo-sync type 101. This report captures our 60-90B incoming frames around Import for comparison.")
+        lines.append("Scope: full HEX and ASCII preview; these are incoming glasses notifications, not commands written by BFA7 Bridge.")
+        lines.append("")
+
+        if candidates.isEmpty {
+            lines.append("No 60-90B incoming candidate frames in the focused Import window.")
+        } else {
+            for entry in candidates {
+                lines.append("\(entry.relativeLabel) | <- \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
+                lines.append("HEX: \(entry.packet.hex)")
+                lines.append("ASCII: \(entry.packet.ascii)")
+                lines.append("")
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     func importWitnessReport(around date: Date?) -> String {
         let entries = importWindowEntries(around: date)
         let incoming = entries.filter { $0.packet.direction == .incoming }

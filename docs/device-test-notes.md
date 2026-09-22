@@ -432,3 +432,19 @@ Findings:
 Implementation response:
 - Added `BFA7WiFiJoiner` using `NEHotspotConfiguration` so Capture can request joining the `Xiaomi AI Glasses BFA7` SSID and immediately check `/v1/filelists`.
 - This does not activate the glasses AP by itself; it reduces manual friction once the AP is already visible.
+
+
+## 2026-09-22 public Xiaomi AI Glasses type 101 clue
+
+Source: MentraOS public reverse-engineering notes for Xiaomi AI Glasses, checked on 2026-09-22.
+
+Findings to validate against BFA7:
+
+- Public Android `logcat` notes report a `MiWearDeviceContactEngineImpl` photo-sync trigger with `type=101`, `needResponse=true`, and an 8-byte send.
+- The same notes report a roughly 67-byte BLE response around hotspot creation, followed by Wi-Fi AP credentials and gateway `192.168.43.1`.
+- This matches our architecture and may explain the 73/75-byte incoming `FE95/005E` frames seen around Import, but it does not yet give the exact outbound payload bytes.
+
+Implementation response:
+
+- Added `Copy Wi-Fi credential candidates` in Import Lab. It exports full HEX/ASCII for incoming 60-90B frames around the Import mark so we can compare BFA7 frames with the public 67-byte credential-response clue.
+- This is now the preferred next capture before any more replay attempts.

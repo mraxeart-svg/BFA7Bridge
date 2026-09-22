@@ -706,6 +706,11 @@ private struct ImportLabSection: View {
             }
             .disabled(glasses.importExperimentStartedAt == nil)
 
+            Button("Copy Wi-Fi credential candidates") {
+                UIPasteboard.general.string = protocolLab.importWiFiCredentialCandidateReport(around: glasses.importExperimentMarkedAt)
+            }
+            .disabled(protocolLab.packets.isEmpty)
+
             Button("Copy import JSON") {
                 UIPasteboard.general.string = protocolLab.importJSONExport(around: glasses.importExperimentMarkedAt)
             }
@@ -867,11 +872,11 @@ private struct ImportLabSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            Text("APK clue: CreateWifiAP uses command bytes 00 02 and content 01 wifiType 01; encrypted commands prepend seq. This section only builds that candidate, it does not prove the final trigger until the Wi-Fi probe succeeds.")
+            Text("APK clue: CreateWifiAP uses command bytes 00 02 and content 01 wifiType 01; encrypted commands prepend seq. Public logcat notes also point to a MiWear photo-sync type 101 path with a ~67B Wi-Fi credential response, so capture 60-90B candidate frames before replaying anything.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy paired import witness. iOS не показывает BLE write, отправленный Xiaomi app; отчёт фиксирует только наши write и ответы очков.")
+            Text("Порядок: Start -> переключись в Xiaomi app -> нажми Import -> вернись сюда -> Mark -> согласись на Wi-Fi -> Run Wi-Fi probe -> Copy paired import witness + Copy Wi-Fi credential candidates. iOS не показывает BLE write, отправленный Xiaomi app; отчёт фиксирует только наши write и ответы очков.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
