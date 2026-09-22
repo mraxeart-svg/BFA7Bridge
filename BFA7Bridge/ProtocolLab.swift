@@ -1,9 +1,24 @@
 import Foundation
 import Combine
 
+enum BFA7PacketDirection: String, Codable, Hashable {
+    case incoming = "in"
+    case outgoing = "out"
+
+    var marker: String {
+        switch self {
+        case .incoming:
+            return "<-"
+        case .outgoing:
+            return "->"
+        }
+    }
+}
+
 struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
     let id: UUID
     let date: Date
+    let direction: BFA7PacketDirection
     let serviceUUID: String
     let characteristicUUID: String
     let byteCount: Int
@@ -13,9 +28,10 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
     let looksLikeA5Frame: Bool
     let frame: BFA7Frame?
 
-    init(date: Date = Date(), serviceUUID: String, characteristicUUID: String, data: Data) {
+    init(date: Date = Date(), direction: BFA7PacketDirection = .incoming, serviceUUID: String, characteristicUUID: String, data: Data) {
         self.id = UUID()
         self.date = date
+        self.direction = direction
         self.serviceUUID = serviceUUID
         self.characteristicUUID = characteristicUUID
         self.byteCount = data.count
@@ -30,12 +46,13 @@ struct BFA7ProtocolPacket: Identifiable, Codable, Hashable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let frameSummary = frame?.summary ?? "raw"
-        return "\(formatter.string(from: date)) | \(characteristicUUID) | \(byteCount) B | \(firstBytes) | \(frameSummary)"
+        return "\(formatter.string(from: date)) | \(direction.marker) \(characteristicUUID) | \(byteCount) B | \(firstBytes) | \(frameSummary)"
     }
 
     var csvLine: String {
         [
             date.ISO8601Format(),
+            direction.rawValue,
             serviceUUID,
             characteristicUUID,
             "\(byteCount)",
@@ -179,8 +196,8 @@ final class ProtocolLab: ObservableObject {
     @Published var timelineWindowAfter: TimeInterval = 15
     private let limit = 5000
 
-    func record(serviceUUID: String, characteristicUUID: String, data: Data) {
-        packets.append(BFA7ProtocolPacket(serviceUUID: serviceUUID, characteristicUUID: characteristicUUID, data: data))
+    func record(direction: BFA7PacketDirection = .incoming, serviceUUID: String, characteristicUUID: String, data: Data) {
+        packets.append(BFA7ProtocolPacket(direction: direction, serviceUUID: serviceUUID, characteristicUUID: characteristicUUID, data: data))
         if packets.count > limit {
             packets.removeFirst(packets.count - limit)
         }
@@ -266,6 +283,8 @@ final class ProtocolLab: ObservableObject {
     var packetStats: String {
         let filtered = filteredPackets
         let a5 = filtered.filter { $0.looksLikeA5Frame }.count
+        let incoming = filtered.filter { $0.direction == .incoming }.count
+        let outgoing = filtered.filter { $0.direction == .outgoing }.count
         let grouped = Dictionary(grouping: filtered) { packet in
             packet.byteCount
         }
@@ -295,7 +314,7 @@ final class ProtocolLab: ObservableObject {
         }.map { item in
             "\(item.kind.rawValue) x\(item.count)"
         }.joined(separator: ", ")
-        return "packets=\(filtered.count), A5=\(a5), sizes=[\(sizeSummary)], frames=[\(kindSummary)]"
+        return "packets=\(filtered.count), in=\(incoming), out=\(outgoing), A5=\(a5), sizes=[\(sizeSummary)], frames=[\(kindSummary)]"
     }
 
     var jsonExport: String {
@@ -307,7 +326,7 @@ final class ProtocolLab: ObservableObject {
     }
 
     var csvExport: String {
-        let header = "date,service_uuid,characteristic_uuid,byte_count,first_bytes,looks_like_a5,frame_kind,sequence,declared_length,hex,ascii"
+        let header = "date,direction,service_uuid,characteristic_uuid,byte_count,first_bytes,looks_like_a5,frame_kind,sequence,declared_length,hex,ascii"
         return ([header] + filteredPackets.map(\.csvLine)).joined(separator: "\n")
     }
 
@@ -324,7 +343,7 @@ final class ProtocolLab: ObservableObject {
         lines.append("")
         for entry in controlFrames {
             let frame = entry.packet.frame
-            lines.append("\(entry.relativeLabel) | \(entry.packet.characteristicUUID) | \(entry.packet.firstBytes) | \(frame?.summary ?? "raw")")
+            lines.append("\(entry.relativeLabel) | \(entry.packet.direction.marker) \(entry.packet.characteristicUUID) | \(entry.packet.firstBytes) | \(frame?.summary ?? "raw")")
         }
         return lines.joined(separator: "\n")
     }
@@ -375,10 +394,10 @@ final class ProtocolLab: ObservableObject {
         lines.append("BFA7 Import Full HEX Report")
         lines.append("Generated: \(Date().ISO8601Format())")
         lines.append("Mark: \(date?.ISO8601Format() ?? "not marked")")
-        lines.append("Note: these are observed incoming BLE notifications/reads in BFA7 Bridge, not proven Xiaomi-app writes.")
+        lines.append("Note: incoming rows are BLE notifications/reads; outgoing rows are commands written by BFA7 Bridge.")
         lines.append("")
         for entry in importWindowEntries(around: date) {
-            lines.append("\(entry.relativeLabel) | \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
+            lines.append("\(entry.relativeLabel) | \(entry.packet.direction.marker) \(entry.packet.serviceUUID)/\(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.frame?.summary ?? "raw")")
             lines.append("HEX: \(entry.packet.hex)")
             lines.append("ASCII: \(entry.packet.ascii)")
             lines.append("")
@@ -389,7 +408,8 @@ final class ProtocolLab: ObservableObject {
     func importReplayCandidateReport(around date: Date?) -> String {
         let entries = importWindowEntries(around: date)
             .filter { entry in
-                entry.packet.characteristicUUID.localizedCaseInsensitiveContains("005E")
+                entry.packet.direction == .incoming
+                    && entry.packet.characteristicUUID.localizedCaseInsensitiveContains("005E")
                     && entry.packet.byteCount <= 96
                     && entry.packet.looksLikeA5Frame
             }
@@ -429,7 +449,7 @@ final class ProtocolLab: ObservableObject {
             return lines.joined(separator: "\n")
         }
 
-        let byCharacteristic = Dictionary(grouping: entries) { $0.packet.characteristicUUID }
+        let byCharacteristic = Dictionary(grouping: entries) { "\($0.packet.direction.marker) \($0.packet.characteristicUUID)" }
         lines.append("By characteristic:")
         for key in byCharacteristic.keys.sorted() {
             let group = byCharacteristic[key] ?? []
@@ -447,7 +467,7 @@ final class ProtocolLab: ObservableObject {
         lines.append("")
         lines.append("Timeline:")
         for entry in entries {
-            lines.append("\(entry.relativeLabel) | \(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.firstBytes) | \(entry.packet.frame?.summary ?? "raw")")
+            lines.append("\(entry.relativeLabel) | \(entry.packet.direction.marker) \(entry.packet.characteristicUUID) | \(entry.packet.byteCount) B | \(entry.packet.firstBytes) | \(entry.packet.frame?.summary ?? "raw")")
         }
         return lines.joined(separator: "\n")
     }

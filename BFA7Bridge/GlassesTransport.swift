@@ -240,6 +240,12 @@ final class GlassesTransport: NSObject, ObservableObject {
         }
 
         let writeType: CBCharacteristicWriteType = characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        protocolLab.record(
+            direction: .outgoing,
+            serviceUUID: characteristic.service?.uuid.uuidString ?? "?",
+            characteristicUUID: characteristic.uuid.uuidString,
+            data: data
+        )
         peripheral.writeValue(data, for: characteristic, type: writeType)
         appendLog("Write -> \(characteristic.service?.uuid.uuidString ?? "?")/\(characteristic.uuid.uuidString) \(logValue(data))", kind: .value)
         return true

@@ -1232,7 +1232,7 @@ private struct ProtocolLabSection: View {
                         Spacer()
                         Text("\(entry.packet.byteCount) B").font(.caption.monospaced()).foregroundStyle(.secondary)
                     }
-                    Text(entry.packet.characteristicUUID)
+                    Text("\(entry.packet.direction.marker) \(entry.packet.characteristicUUID)")
                         .font(.caption2.monospaced())
                     Text(entry.packet.frame?.summary ?? (entry.packet.firstBytes + (entry.packet.looksLikeA5Frame ? "  A5" : "")))
                         .font(.caption2.monospaced())
