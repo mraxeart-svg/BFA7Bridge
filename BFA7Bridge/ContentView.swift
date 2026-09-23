@@ -637,6 +637,7 @@ private struct LabView: View {
         NavigationStack {
             List {
                 ImportLabSection()
+                WearPacketLabSection()
                 SVAuthLabSection()
                 GATTSVHunterSection()
                 ProtocolLabSection()
@@ -1076,6 +1077,130 @@ private struct ImportLabSection: View {
         importAutoScanTask?.cancel()
         importAutoScanTask = nil
         autoScanStatus = "Остановлено"
+    }
+}
+
+
+
+private struct WearPacketLabSection: View {
+    @EnvironmentObject private var glasses: GlassesTransport
+    @EnvironmentObject private var media: MediaTransfer
+    @State private var target = BFA7WearPacketProtocol.defaultTarget
+    @State private var packetSystemField = 5
+    @State private var systemWifiApRequestField = 40
+    @State private var requestFrequencyField = 1
+    @State private var frequency = 0
+    @State private var includePacketType = false
+    @State private var packetType = 0
+    @State private var includePacketID = false
+    @State private var packetID = 1
+    @State private var commandHex = ""
+    @State private var report = "Ожидание"
+
+    var body: some View {
+        Section("iOS WearPacket Lab") {
+            Text("Путь из iOS IPA: MIWearPB.WearPacket -> WearSystem.wifiApRequest -> WearWiFiAP.Request.frequency. Номера protobuf-полей ниже являются гипотезой по символам, потому что код App Store IPA зашифрован FairPlay.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField("Target characteristic", text: $target)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.body.monospaced())
+
+            Stepper("WearPacket.system field \(packetSystemField)", value: $packetSystemField, in: 1...32)
+            Stepper("WearSystem.wifiApRequest field \(systemWifiApRequestField)", value: $systemWifiApRequestField, in: 1...96)
+            Stepper("Request.frequency field \(requestFrequencyField)", value: $requestFrequencyField, in: 1...16)
+            Stepper("frequency \(frequency)", value: $frequency, in: 0...8)
+
+            Toggle("Include WearPacket.type", isOn: $includePacketType)
+            if includePacketType {
+                Stepper("type \(packetType)", value: $packetType, in: 0...255)
+            }
+
+            Toggle("Include WearPacket.id", isOn: $includePacketID)
+            if includePacketID {
+                Stepper("id \(packetID)", value: $packetID, in: 0...4096)
+            }
+
+            HStack {
+                Button("Build WiFiAP request") {
+                    buildWearPacket()
+                }
+
+                Spacer()
+
+                Button("Copy WearPacket report") {
+                    UIPasteboard.general.string = report
+                }
+            }
+
+            HStack {
+                Button("Write candidate") {
+                    _ = glasses.writeHexCommand(commandHex, target: target)
+                }
+                .disabled(commandHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Spacer()
+
+                Button("Write + Wi-Fi probe") {
+                    Task {
+                        if glasses.writeHexCommand(commandHex, target: target) {
+                            try? await Task.sleep(nanoseconds: 5_000_000_000)
+                            await media.refreshFileList()
+                        }
+                    }
+                }
+                .disabled(commandHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || media.isBusy)
+            }
+
+            if !commandHex.isEmpty {
+                Text(commandHex)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
+            }
+
+            Text(report)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(18)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func buildWearPacket() {
+        let build = BFA7WearPacketProtocol.wifiApRequestCandidate(
+            packetSystemField: UInt32(packetSystemField),
+            systemWifiApRequestField: UInt32(systemWifiApRequestField),
+            requestFrequencyField: UInt32(requestFrequencyField),
+            frequency: UInt64(frequency),
+            packetType: includePacketType ? UInt64(packetType) : nil,
+            packetID: includePacketID ? UInt64(packetID) : nil
+        )
+        commandHex = build.hex
+        report = reportText(build)
+    }
+
+    private func reportText(_ build: BFA7WearPacketBuild) -> String {
+        var lines: [String] = []
+        lines.append("BFA7 iOS WearPacket Build")
+        lines.append("Generated: \(Date().ISO8601Format())")
+        lines.append("Command: \(build.title)")
+        lines.append("Target: \(target)")
+        lines.append("HEX: \(build.hex)")
+        lines.append("")
+        lines.append("IPA findings:")
+        lines.append("- Bundle: com.xiaomi.superhexa / Xiaomi Glasses 3.3.0.")
+        lines.append("- MIWearPB symbols include WearSystem.wifiApRequest, WearSystem.wifiApResult, WearWiFiAP, WearWiFiAP.Request.frequency.")
+        lines.append("- MIWBTCore symbols include MIWBTReq(timeOut:channel:package:) with package MIWearPB.WearPacket.")
+        lines.append("- MIWWifiSDK uses NEHotspotConfiguration for joining the AP after glasses expose it.")
+        lines.append("- App Store executable code is FairPlay-encrypted here; this build uses symbol-order field hypotheses, not a confirmed callsite.")
+        lines.append("")
+        lines.append("Notes:")
+        lines.append(contentsOf: build.notes.map { "- \($0)" })
+        lines.append("")
+        lines.append("Test order: connect BFA7 GATT -> Build -> Write candidate -> wait 5s -> Refresh file list / Wi-Fi probe. If no AP appears, capture incoming FE95 frames and adjust only one field number at a time.")
+        return lines.joined(separator: "\n")
     }
 }
 

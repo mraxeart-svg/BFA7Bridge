@@ -25,6 +25,7 @@
 		AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000091 /* SpeechTranscriber.swift */; };
 		AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000093 /* BFA7SVProtocol.swift */; };
 		AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000095 /* BFA7WiFiJoiner.swift */; };
+		AA0000000000000000000098 /* BFA7WearPacketProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000099 /* BFA7WearPacketProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		AA0000000000000000000091 /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
 		AA0000000000000000000093 /* BFA7SVProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7SVProtocol.swift; sourceTree = "<group>"; };
 		AA0000000000000000000095 /* BFA7WiFiJoiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7WiFiJoiner.swift; sourceTree = "<group>"; };
+		AA0000000000000000000099 /* BFA7WearPacketProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7WearPacketProtocol.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +88,7 @@
 				AA000000000000000000002C /* BFA7AppIntents.swift */,
 				AA000000000000000000002D /* ProtocolLab.swift */,
 				AA0000000000000000000093 /* BFA7SVProtocol.swift */,
+				AA0000000000000000000099 /* BFA7WearPacketProtocol.swift */,
 				AA0000000000000000000095 /* BFA7WiFiJoiner.swift */,
 				AA000000000000000000002E /* WiFiImportLab.swift */,
 				AA000000000000000000002F /* SystemCaptureProbe.swift */,
@@ -182,6 +185,7 @@
 				AA0000000000000000000092 /* SpeechTranscriber.swift in Sources */,
 				AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */,
 				AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */,
+				AA0000000000000000000098 /* BFA7WearPacketProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
