@@ -55,6 +55,21 @@ Important files:
 - `MIWearPB.relevant-symbols.tsv`
 - `*.disasm.txt`
 
+
+## Second Surface Pass
+
+A compact surface pass over `Info.plist`, bundled plists/resources, and high-signal symbols found:
+
+- URL schemes: `miGlasses://` and `aimiWear://` are registered, but no clear import/Wi-Fi deep-link route is exposed in plaintext metadata.
+- `LSApplicationQueriesSchemes` is mostly third-party/social integrations; it does not expose a Xiaomi import helper app route.
+- `NSLocalNetworkUsageDescription` says the app connects to the device to download captured files.
+- `NSBonjourServices` contains `_mis._tcp`, but the known glasses media endpoint still appears to be direct HTTP after AP exposure.
+- `MIWWifiSDK` contains the normal iOS join layer: `MIWWiFiManager.connect(ssid:password:)`, `getCurrentSSID`, and `MIWWIFINetworkValidator.validateConnection(expectedSSID:expectedIP:)`.
+- Wi-Fi/AP protobuf metadata includes `WearWiFiAP.ssid`, `password`, `gateway`, `WearWiFiAP.Request.frequency`, and `WearWiFiAP.Result.code/wifiAp`.
+- Mass/media transfer symbols exist (`MIWBTMassService`, CRC32, sync mass methods), but those look like Xiaomi's BLE/mass-transfer subsystem, not the HTTP `/v1/files/...` path we already got working.
+
+This pass did not reveal a plaintext shortcut that bypasses the authenticated MIWBT request path. It strengthens the current model: official import is `BLE authenticated/encrypted AP request -> NEHotspotConfiguration join -> HTTP media download`.
+
 ## Next Practical Step
 
 Do not continue blind BLE brute force. The next useful path is to get one of:
