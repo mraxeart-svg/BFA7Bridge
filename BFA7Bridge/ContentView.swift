@@ -1090,10 +1090,17 @@ private struct WearPacketLabSection: View {
     @State private var systemWifiApRequestField = 40
     @State private var requestFrequencyField = 1
     @State private var frequency = 0
-    @State private var includePacketType = false
-    @State private var packetType = 0
-    @State private var includePacketID = false
-    @State private var packetID = 1
+    @State private var includePacketType = true
+    @State private var packetType = 5
+    @State private var includePacketID = true
+    @State private var packetID = 40
+    @State private var envelopeMode = 2
+    @State private var channel = 1
+    @State private var opCode = 1
+    @State private var ident = 1
+    @State private var sequence = 0x45
+    @State private var includeLength = true
+    @State private var includeIdent = true
     @State private var commandHex = ""
     @State private var report = "Ожидание"
 
@@ -1108,6 +1115,13 @@ private struct WearPacketLabSection: View {
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
+            Picker("Envelope", selection: $envelopeMode) {
+                Text("Raw protobuf").tag(0)
+                Text("MIW channel").tag(1)
+                Text("A5 + MIW channel").tag(2)
+            }
+            .pickerStyle(.segmented)
+
             Stepper("WearPacket.system field \(packetSystemField)", value: $packetSystemField, in: 1...32)
             Stepper("WearSystem.wifiApRequest field \(systemWifiApRequestField)", value: $systemWifiApRequestField, in: 1...96)
             Stepper("Request.frequency field \(requestFrequencyField)", value: $requestFrequencyField, in: 1...16)
@@ -1121,6 +1135,19 @@ private struct WearPacketLabSection: View {
             Toggle("Include WearPacket.id", isOn: $includePacketID)
             if includePacketID {
                 Stepper("id \(packetID)", value: $packetID, in: 0...4096)
+            }
+
+            if envelopeMode != 0 {
+                Stepper("channel 0x\(String(format: "%02X", channel))", value: $channel, in: 0...255)
+                Stepper("op 0x\(String(format: "%02X", opCode))", value: $opCode, in: 0...255)
+                Toggle("Include ident", isOn: $includeIdent)
+                if includeIdent {
+                    Stepper("ident 0x\(String(format: "%02X", ident))", value: $ident, in: 0...255)
+                }
+                Toggle("Include packet length", isOn: $includeLength)
+                if envelopeMode == 2 {
+                    Stepper("A5 seq 0x\(String(format: "%02X", sequence))", value: $sequence, in: 0...255)
+                }
             }
 
             HStack {
@@ -1169,14 +1196,35 @@ private struct WearPacketLabSection: View {
     }
 
     private func buildWearPacket() {
-        let build = BFA7WearPacketProtocol.wifiApRequestCandidate(
-            packetSystemField: UInt32(packetSystemField),
-            systemWifiApRequestField: UInt32(systemWifiApRequestField),
-            requestFrequencyField: UInt32(requestFrequencyField),
-            frequency: UInt64(frequency),
-            packetType: includePacketType ? UInt64(packetType) : nil,
-            packetID: includePacketID ? UInt64(packetID) : nil
-        )
+        let typeValue = includePacketType ? UInt64(packetType) : nil
+        let idValue = includePacketID ? UInt64(packetID) : nil
+        let build: BFA7WearPacketBuild
+        if envelopeMode == 0 {
+            build = BFA7WearPacketProtocol.wifiApRequestCandidate(
+                packetSystemField: UInt32(packetSystemField),
+                systemWifiApRequestField: UInt32(systemWifiApRequestField),
+                requestFrequencyField: UInt32(requestFrequencyField),
+                frequency: UInt64(frequency),
+                packetType: typeValue,
+                packetID: idValue
+            )
+        } else {
+            build = BFA7WearPacketProtocol.miwChannelCandidate(
+                packetSystemField: UInt32(packetSystemField),
+                systemWifiApRequestField: UInt32(systemWifiApRequestField),
+                requestFrequencyField: UInt32(requestFrequencyField),
+                frequency: UInt64(frequency),
+                packetType: typeValue,
+                packetID: idValue,
+                channel: UInt8(channel),
+                opCode: UInt8(opCode),
+                ident: UInt8(ident),
+                sequence: UInt8(sequence),
+                includeLength: includeLength,
+                includeIdent: includeIdent,
+                includeA5Frame: envelopeMode == 2
+            )
+        }
         commandHex = build.hex
         report = reportText(build)
     }
@@ -1193,8 +1241,10 @@ private struct WearPacketLabSection: View {
         lines.append("- Bundle: com.xiaomi.superhexa / Xiaomi Glasses 3.3.0.")
         lines.append("- MIWearPB symbols include WearSystem.wifiApRequest, WearSystem.wifiApResult, WearWiFiAP, WearWiFiAP.Request.frequency.")
         lines.append("- MIWBTCore symbols include MIWBTReq(timeOut:channel:package:) with package MIWearPB.WearPacket.")
+        lines.append("- MIWBTCore also exposes MIWBTChannel, MIWChannelPayload.payloadData(), and transmissionData(data:).")
+        lines.append("- MIWBTModule exposes WearPacket(system,id:) extension constructors, so type/id are probably part of the official request.")
         lines.append("- MIWWifiSDK uses NEHotspotConfiguration for joining the AP after glasses expose it.")
-        lines.append("- App Store executable code is FairPlay-encrypted here; this build uses symbol-order field hypotheses, not a confirmed callsite.")
+        lines.append("- App Store executable code is FairPlay-encrypted here; this build uses transport-shape hypotheses, not a confirmed callsite.")
         lines.append("")
         lines.append("Notes:")
         lines.append(contentsOf: build.notes.map { "- \($0)" })
