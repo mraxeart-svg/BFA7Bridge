@@ -229,8 +229,13 @@ const EXACT_SWIFT_SYMBOLS = [
   ['MIWBTCore', '_$s9MIWBTCore8MIWBTReqC32convertPackagetoTransmissionDataAA12MIWBTRspCodeOSgyF', 'MIWBTReq.convertPackagetoTransmissionData()'],
   ['MIWBTCore', '_$s9MIWBTCore8MIWBTReqC16transmissionData4datay10Foundation0D0V_tF', 'MIWBTReq.transmissionData(data:)'],
   ['MIWBTCore', '_$s9MIWBTCore12MIWBTChannelC11payloadData10Foundation0D0VyF', 'MIWBTChannel.payloadData()'],
-  ['MIWBTCore', '_$s9MIWBTCore17MIWChannelPayloadC11payloadData10Foundation0E0VSgyF', 'MIWChannelPayload.payloadData()']
+  ['MIWBTCore', '_$s9MIWBTCore17MIWChannelPayloadC11payloadData10Foundation0E0VSgyF', 'MIWChannelPayload.payloadData()'],
+  ['MIWBTCore', 'MIWBTCore.MIWCBPeripheral.txData(bytes:)', 'MIWCBPeripheral.txData(bytes:)'],
+  ['MIWBTCore', 'MIWBTCore.MIWBTGattIO.txTask(target:)', 'MIWBTGattIO.txTask(target:)']
 ];
+
+const DISCOVERY_SYMBOL_TERMS = /MIWFlowEncrypt|MIWBTReq|MIWBTChannel|MIWChannelPayload|MIWCBPeripheral\.txData|MIWBTGattIO\.(txTask|sendSingleIOModel)|payloadData|transmissionData|convertPackage|encrypt\(data|decrypt\(data/i;
+const AUTO_HOOK_SYMBOL_TERMS = /MIWFlowEncrypt.*(encrypt|decrypt)|MIWBTReq.*(transmissionData|convertPackage|timeOut.*channel.*package)|MIWBTChannel.*payloadData|MIWChannelPayload.*payloadData|MIWCBPeripheral\.txData|MIWBTGattIO\.(txTask|sendSingleIOModel)/i;
 
 function pointerSummary(address, limit) {
   return safe(() => {
@@ -257,37 +262,69 @@ function dumpRegisters(label, args, context) {
   log(`${label} sp ${pointerSummary(context.sp, 160)}`);
 }
 
+function attachSwiftSymbol(module, symbol, label) {
+  const key = `swift:${module.name}:${symbol.name}:${symbol.address}`;
+  if (STATE.hooked.has(key) || !symbol.address) {
+    return false;
+  }
+  STATE.hooked.add(key);
+  try {
+    Interceptor.attach(symbol.address, {
+      onEnter(args) {
+        this.label = label;
+        log(`SWIFT ENTER ${label} addr=${symbol.address} name=${symbol.name}`);
+        dumpRegisters(`SWIFT ${label}`, args, this.context);
+        logBacktrace(`SWIFT ${label}`, this.context);
+      },
+      onLeave(retval) {
+        log(`SWIFT LEAVE ${this.label} ret=${retval} ${pointerSummary(retval, 96)}`);
+      }
+    });
+    log(`HOOK Swift ${label} ${symbol.name}`);
+    return true;
+  } catch (error) {
+    log(`SKIP Swift ${label} ${symbol.name}: ${error}`);
+    return false;
+  }
+}
+
 function hookExactSwiftSymbols() {
   Process.enumerateModules().forEach(module => {
-    EXACT_SWIFT_SYMBOLS.forEach(([moduleNeedle, symbolName, label]) => {
-      if (module.name.indexOf(moduleNeedle) < 0 && (module.path || '').indexOf(moduleNeedle) < 0) {
-        return;
-      }
-      const key = `exact:${module.name}:${symbolName}`;
-      if (STATE.hooked.has(key)) {
-        return;
-      }
-      const symbols = safe(() => Module.enumerateSymbolsSync(module.name), []);
-      const symbol = symbols.find(item => item.name === symbolName);
-      if (!symbol || !symbol.address) {
-        log(`MISS Swift ${label} in ${module.name}`);
-        STATE.hooked.add(key);
-        return;
-      }
-      STATE.hooked.add(key);
-      Interceptor.attach(symbol.address, {
-        onEnter(args) {
-          this.label = label;
-          log(`SWIFT ENTER ${label} addr=${symbol.address}`);
-          dumpRegisters(`SWIFT ${label}`, args, this.context);
-          logBacktrace(`SWIFT ${label}`, this.context);
-        },
-        onLeave(retval) {
-          log(`SWIFT LEAVE ${this.label} ret=${retval} ${pointerSummary(retval, 96)}`);
+    if (module.name.indexOf('MIWBTCore') < 0 && (module.path || '').indexOf('MIWBTCore') < 0) {
+      return;
+    }
+    const symbols = safe(() => Module.enumerateSymbolsSync(module.name), []);
+    log(`MIWBTCore symbol count=${symbols.length} module=${module.name} base=${module.base} path=${module.path}`);
+
+    let discoveryCount = 0;
+    symbols.forEach(symbol => {
+      if (symbol.name && DISCOVERY_SYMBOL_TERMS.test(symbol.name)) {
+        if (discoveryCount < 120) {
+          log(`DISCOVER Swift ${symbol.address} ${symbol.name}`);
         }
-      });
-      log(`HOOK Swift ${label} ${symbol.name}`);
+        discoveryCount += 1;
+      }
     });
+    log(`DISCOVER Swift matched=${discoveryCount}`);
+
+    EXACT_SWIFT_SYMBOLS.forEach(([moduleNeedle, symbolName, label]) => {
+      const exact = symbols.find(item => item.name === symbolName);
+      if (exact) {
+        attachSwiftSymbol(module, exact, label);
+      } else {
+        log(`MISS Swift exact ${label} ${symbolName}`);
+      }
+    });
+
+    let autoHookCount = 0;
+    symbols.forEach(symbol => {
+      if (symbol.name && AUTO_HOOK_SYMBOL_TERMS.test(symbol.name) && autoHookCount < 40) {
+        if (attachSwiftSymbol(module, symbol, `AUTO ${symbol.name}`)) {
+          autoHookCount += 1;
+        }
+      }
+    });
+    log(`AUTO Swift hooked=${autoHookCount}`);
   });
 }
 
