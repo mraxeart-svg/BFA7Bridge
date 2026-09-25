@@ -81,6 +81,69 @@ function hexDump(pointer, length, limit) {
   return `${bytesToHex(bytes)}${suffix} ascii=${bytesToAscii(bytes)}`;
 }
 
+function pointerHigh32(pointer) {
+  return safe(() => pointer.shr(32).toUInt32(), -1);
+}
+
+function pointerLowBytes(pointer, count) {
+  return safe(() => {
+    let value = pointer;
+    const bytes = [];
+    for (let index = 0; index < count; index += 1) {
+      bytes.push(value.and(ptr('0xff')).toUInt32());
+      value = value.shr(8);
+    }
+    return bytes;
+  }, []);
+}
+
+function stripSwiftPointerTag(pointer) {
+  return safe(() => pointer.and(ptr('0x0000ffffffffffff')), ptr('0'));
+}
+
+function logPointerCandidate(label, pointer, length) {
+  if (pointer.isNull() || length <= 0 || length > 4096) {
+    return;
+  }
+  const range = Process.findRangeByAddress(pointer);
+  if (!range || range.protection.indexOf('r') < 0) {
+    log(`${label} candidate=${pointer} len=${length} <unreadable-range>`);
+    return;
+  }
+  log(`${label} candidate=${pointer} len=${length} ${hexDump(pointer, length, 512)}`);
+}
+
+function logSwiftDataReturn(label, context) {
+  const x0 = context.x0;
+  const x1 = context.x1;
+  const x2 = context.x2;
+  const x3 = context.x3;
+  const countFromX0 = pointerHigh32(x0);
+  const inlineX0 = pointerLowBytes(x0, 8);
+  const inlineX1 = pointerLowBytes(x1, 8);
+  const taggedX1 = stripSwiftPointerTag(x1);
+
+  log(`${label} ret-inline x0-le=${bytesToHex(inlineX0)} ascii=${bytesToAscii(inlineX0)} x1-le=${bytesToHex(inlineX1)} ascii=${bytesToAscii(inlineX1)} count-hi32=${countFromX0}`);
+
+  if (countFromX0 > 0 && countFromX0 <= 4096) {
+    logPointerCandidate(`${label} ret-x1-tagged`, taggedX1, countFromX0);
+    logPointerCandidate(`${label} ret-x1-raw`, x1, countFromX0);
+    [0, 8, 16, 24, 32, 40, 48, 56].forEach(offset => {
+      const slot = taggedX1.add(offset);
+      const candidate = safe(() => Memory.readPointer(slot), ptr('0'));
+      logPointerCandidate(`${label} ret-x1-slot+${offset}`, candidate, countFromX0);
+    });
+  }
+
+  if (!x3.isNull()) {
+    logPointerCandidate(`${label} ret-x3`, x3, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
+  }
+
+  if (!x2.isNull()) {
+    logPointerCandidate(`${label} ret-x2`, x2, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
+  }
+}
+
 function nsDataInfo(objPtr, limit) {
   if (!ObjC.available || objPtr.isNull()) {
     return '<no-nsdata>';
@@ -278,6 +341,7 @@ function hookFlowSymbols() {
       },
       onLeave(retval) {
         log(`FLOW LEAVE ${this.label} ret=${retval} x0=${this.context.x0} x1=${this.context.x1} x2=${this.context.x2} x3=${this.context.x3}`);
+        logSwiftDataReturn(`FLOW LEAVE ${this.label}`, this.context);
       }
     });
     log(`HOOK Flow ${label} ${symbol.name}`);
