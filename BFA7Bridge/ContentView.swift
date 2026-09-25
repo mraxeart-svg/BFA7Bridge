@@ -1024,6 +1024,11 @@ private struct ImportLabSection: View {
                     }
                 }
 
+                Button("Replay XOR AP trigger") {
+                    runOfficialImportReplay(name: "iOS XOR AP trigger", frames: [officialXorAPTriggerFrame])
+                }
+                .disabled(!importTriggerEnabled || media.isBusy)
+
                 Button("Replay iOS Import 244+5") {
                     runOfficialImportReplay(name: "iOS 244+5", frames: officialImport244Plus5Frames)
                 }
@@ -1151,6 +1156,21 @@ private struct ImportLabSection: View {
         !importTriggerHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var officialXorAPTriggerFrame: String {
+        let plaintext = Data([
+            0x08, 0x0E, 0x10, 0x05, 0x82, 0x01, 0x0E, 0x2A, 0x0C, 0x08, 0x00,
+            0x10, 0x00, 0x18, 0x00, 0x20, 0x00, 0x28, 0x00, 0x30, 0x01
+        ])
+        let keystream = Data([
+            0xF1, 0x9C, 0xDE, 0xCF, 0x6F, 0x58, 0x39, 0x48, 0x5A, 0xCF, 0x18,
+            0x7C, 0xAC, 0xC7, 0x91, 0xCA, 0x8C, 0x82, 0x97, 0x27, 0x23
+        ])
+        let cipher = Data(zip(plaintext, keystream).map { pair in pair.0 ^ pair.1 })
+        var payload = Data([0x01, 0x02])
+        payload.append(cipher)
+        return a5PayloadFrame(payload: payload, sequence: 0x80).bfa7HexString
+    }
+
     private var officialImport244Plus5Frames: [String] {
         [
             "A5 A5 03 B7 F1 00 BE 7E 01 02 EA 8B 38 D6 AA FC 02 8B 5E FB 4E 87 79 DB AF 7F 91 FD 28 28 59 A9 05 D1 9F BB 93 02 1E 94 B2 70 D6 84 98 AE E5 03 B4 57 66 C3 6E 6A AE C2 A4 21 89 E8 D4 C1 9E 49 68 E8 58 EE 6B 28 F3 18 4D 9C C3 83 8B 98 30 07 5D 1C FE 20 99 A3 58 FA 16 07 50 48 EA 9C 22 9F 13 2F 76 37 B4 69 F8 1A 6C ED 2D 49 6A D0 5A 0F 05 9C 11 56 1C 7C B5 F8 15 3E AE 83 37 65 64 7C CC 4B 7F 71 4F DE 93 B8 71 F2 BB 45 AC 0F 01 A0 9E 8B C3 AD 55 F2 14 58 68 19 8B DF B5 DA B1 59 D9 69 89 46 C2 58 C9 09 79 1C 74 A6 EB F9 46 09 5C 32 B9 EC 9D 7F 52 12 D2 D3 49 44 08 7F 1B 0D 2D 47 4C 5F 37 27 F4 06 A4 F6 E7 62 F5 24 42 37 90 1E E1 19 A2 F0 FA BF BF 38 89 27 27 34 1E 2A 0B 36 BA 6C 2F 2F CE 79 11 AA 45 78 41 03 13 8F 3A 94 9D D7",
@@ -1213,6 +1233,32 @@ private struct ImportLabSection: View {
         guard data[0] == 0xA5, data[1] == 0xA5, data[2] == 0x03 else { return hex }
         data[3] = seq
         return data.bfa7HexString
+    }
+
+    private func a5PayloadFrame(payload: Data, sequence: UInt8) -> Data {
+        var frame = Data([0xA5, 0xA5, 0x03, sequence])
+        frame.append(UInt8(payload.count & 0xff))
+        frame.append(UInt8((payload.count >> 8) & 0xff))
+        let crc = crc16ARC(payload)
+        frame.append(UInt8(crc & 0xff))
+        frame.append(UInt8((crc >> 8) & 0xff))
+        frame.append(payload)
+        return frame
+    }
+
+    private func crc16ARC(_ data: Data) -> UInt16 {
+        var crc: UInt16 = 0x0000
+        for byte in data {
+            crc ^= UInt16(byte)
+            for _ in 0..<8 {
+                if (crc & 0x0001) != 0 {
+                    crc = (crc >> 1) ^ 0xA001
+                } else {
+                    crc >>= 1
+                }
+            }
+        }
+        return crc
     }
 
     private var createWifiAPCandidateHex: String {
