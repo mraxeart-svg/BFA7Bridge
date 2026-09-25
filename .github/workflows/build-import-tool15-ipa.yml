@@ -1,0 +1,48 @@
+name: Build BFA7 Import Tool 15 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-import-tool15-ipa:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      - name: Build app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project BFA7ImportTool15.xcodeproj \
+            -scheme BFA7ImportTool15 \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-import-tool15 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="build-import-tool15/Build/Products/Release-iphoneos/BFA7ImportTool15.app"
+          test -d "$APP"
+          rm -rf Payload BFA7ImportTool15.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry BFA7ImportTool15.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BFA7ImportTool15-IPA
+          path: BFA7ImportTool15.ipa
+          if-no-files-found: error
