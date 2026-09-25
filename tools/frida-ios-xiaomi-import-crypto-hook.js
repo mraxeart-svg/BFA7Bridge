@@ -12,6 +12,7 @@
 'use strict';
 
 const STATE = { hooked: new Set() };
+const ENABLE_SWIFT_ATTACH = false;
 
 function now() {
   return new Date().toISOString();
@@ -230,6 +231,9 @@ const EXACT_SWIFT_SYMBOLS = [
   ['MIWBTCore', '_$s9MIWBTCore8MIWBTReqC16transmissionData4datay10Foundation0D0V_tF', 'MIWBTReq.transmissionData(data:)'],
   ['MIWBTCore', '_$s9MIWBTCore12MIWBTChannelC11payloadData10Foundation0D0VyF', 'MIWBTChannel.payloadData()'],
   ['MIWBTCore', '_$s9MIWBTCore17MIWChannelPayloadC11payloadData10Foundation0E0VSgyF', 'MIWChannelPayload.payloadData()'],
+  ['MIWBTCore', '$s9MIWBTCore8MIWBTReqC32convertPackagetoTransmissionDataAA12MIWBTRspCodeOSgyF', 'MIWBTReq.convertPackagetoTransmissionData()'],
+  ['MIWBTCore', '$s9MIWBTCore12MIWBTChannelC11payloadData10Foundation0D0VyF', 'MIWBTChannel.payloadData()'],
+  ['MIWBTCore', '$s9MIWBTCore17MIWChannelPayloadC11payloadData10Foundation0E0VSgyF', 'MIWChannelPayload.payloadData()'],
   ['MIWBTCore', 'MIWBTCore.MIWCBPeripheral.txData(bytes:)', 'MIWCBPeripheral.txData(bytes:)'],
   ['MIWBTCore', 'MIWBTCore.MIWBTGattIO.txTask(target:)', 'MIWBTGattIO.txTask(target:)']
 ];
@@ -310,11 +314,19 @@ function hookExactSwiftSymbols() {
     EXACT_SWIFT_SYMBOLS.forEach(([moduleNeedle, symbolName, label]) => {
       const exact = symbols.find(item => item.name === symbolName);
       if (exact) {
-        attachSwiftSymbol(module, exact, label);
+        log(`FOUND Swift exact ${label} ${exact.address} ${exact.name}`);
+        if (ENABLE_SWIFT_ATTACH) {
+          attachSwiftSymbol(module, exact, label);
+        }
       } else {
         log(`MISS Swift exact ${label} ${symbolName}`);
       }
     });
+
+    if (!ENABLE_SWIFT_ATTACH) {
+      log('AUTO Swift hook disabled; discovery-only mode to avoid crashing Xiaomi app');
+      return;
+    }
 
     let autoHookCount = 0;
     symbols.forEach(symbol => {
