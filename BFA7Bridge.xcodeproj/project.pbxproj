@@ -26,6 +26,7 @@
 		AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000093 /* BFA7SVProtocol.swift */; };
 		AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000095 /* BFA7WiFiJoiner.swift */; };
 		AA0000000000000000000098 /* BFA7WearPacketProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000099 /* BFA7WearPacketProtocol.swift */; };
+		AA00000000000000000000A1 /* RussianAgentSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* RussianAgentSession.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 		AA0000000000000000000093 /* BFA7SVProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7SVProtocol.swift; sourceTree = "<group>"; };
 		AA0000000000000000000095 /* BFA7WiFiJoiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7WiFiJoiner.swift; sourceTree = "<group>"; };
 		AA0000000000000000000099 /* BFA7WearPacketProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BFA7WearPacketProtocol.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* RussianAgentSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RussianAgentSession.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +86,7 @@
 				AA0000000000000000000029 /* AIProvider.swift */,
 				AA000000000000000000002A /* VoiceIO.swift */,
 				AA0000000000000000000091 /* SpeechTranscriber.swift */,
+				AA00000000000000000000A2 /* RussianAgentSession.swift */,
 				AA000000000000000000002B /* CommandSession.swift */,
 				AA000000000000000000002C /* BFA7AppIntents.swift */,
 				AA000000000000000000002D /* ProtocolLab.swift */,
@@ -186,6 +189,7 @@
 				AA0000000000000000000094 /* BFA7SVProtocol.swift in Sources */,
 				AA0000000000000000000096 /* BFA7WiFiJoiner.swift in Sources */,
 				AA0000000000000000000098 /* BFA7WearPacketProtocol.swift in Sources */,
+				AA00000000000000000000A1 /* RussianAgentSession.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

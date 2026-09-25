@@ -156,11 +156,16 @@ function hookCBDelegateNotifications() {
     '- peripheral:didWriteValueForCharacteristic:error:',
     '- peripheral:didDiscoverCharacteristicsForService:error:'
   ];
+  const classTerms = /HCW|MIW|MiWear|MHBle|Ble|Bluetooth/i;
 
   Object.keys(ObjC.classes).forEach(className => {
+    if (!classTerms.test(className)) {
+      return;
+    }
     const cls = ObjC.classes[className];
     selectors.forEach(selector => {
-      if (!cls[selector]) {
+      const method = safe(() => cls[selector], null);
+      if (!method) {
         return;
       }
       const key = `${className} ${selector}`;
@@ -168,21 +173,25 @@ function hookCBDelegateNotifications() {
         return;
       }
       STATE.hooked.add(key);
-      Interceptor.attach(cls[selector].implementation, {
-        onEnter(args) {
-          if (selector.indexOf('didUpdateValueForCharacteristic') >= 0) {
-            const characteristic = characteristicSummary(args[3]);
-            const value = safe(() => new ObjC.Object(args[3]).value(), null);
-            const valuePtr = value && value.handle ? value.handle : (value || ptr('0'));
-            log(`CB NOTIFY ${className} characteristic=${characteristic} ${nsDataInfo(valuePtr, 512)}`);
-          } else if (selector.indexOf('didWriteValueForCharacteristic') >= 0) {
-            log(`CB WRITE ACK ${className} characteristic=${characteristicSummary(args[3])} error=${objSummary(args[4])}`);
-          } else {
-            log(`CB DISCOVER ${className} service=${objSummary(args[3])} error=${objSummary(args[4])}`);
+      try {
+        Interceptor.attach(method.implementation, {
+          onEnter(args) {
+            if (selector.indexOf('didUpdateValueForCharacteristic') >= 0) {
+              const characteristic = characteristicSummary(args[3]);
+              const value = safe(() => new ObjC.Object(args[3]).value(), null);
+              const valuePtr = value && value.handle ? value.handle : (value || ptr('0'));
+              log(`CB NOTIFY ${className} characteristic=${characteristic} ${nsDataInfo(valuePtr, 512)}`);
+            } else if (selector.indexOf('didWriteValueForCharacteristic') >= 0) {
+              log(`CB WRITE ACK ${className} characteristic=${characteristicSummary(args[3])} error=${objSummary(args[4])}`);
+            } else {
+              log(`CB DISCOVER ${className} service=${objSummary(args[3])} error=${objSummary(args[4])}`);
+            }
           }
-        }
-      });
-      log(`HOOK ObjC delegate ${key}`);
+        });
+        log(`HOOK ObjC delegate ${key}`);
+      } catch (error) {
+        log(`SKIP ObjC delegate ${key}: ${error}`);
+      }
     });
   });
 }
@@ -269,9 +278,9 @@ function install() {
   }
   log('Installing BFA7 iOS Xiaomi import hooks');
   hookCoreBluetoothWrites();
-  hookCBDelegateNotifications();
   hookHotspotConfiguration();
   hookMIWSymbols();
+  hookCBDelegateNotifications();
   dumpInterestingObjCClasses();
   log(`Installed hooks=${STATE.hooked.size} symbolHooks=${STATE.symbolHookCount}`);
 }

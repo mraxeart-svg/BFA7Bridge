@@ -454,6 +454,9 @@ private struct AskView: View {
     @EnvironmentObject private var voice: VoiceIO
     @EnvironmentObject private var speech: SpeechTranscriber
     @EnvironmentObject private var commands: CommandSession
+    @EnvironmentObject private var russianAgent: RussianAgentSession
+    @State private var voiceRelayText = ""
+    @State private var xiaoAIRussianCommand = ""
 
     var body: some View {
         NavigationStack {
@@ -556,6 +559,137 @@ private struct AskView: View {
                     }
                 }
 
+                Section("Russian AI agent") {
+                    TextField("Русская команда агенту", text: $russianAgent.userText, axis: .vertical)
+                        .lineLimit(2...6)
+
+                    HStack {
+                        Button("Из записи") {
+                            Task {
+                                if let transcript = await speech.transcribe(url: voice.lastRecordingURL) {
+                                    russianAgent.useTranscript(transcript)
+                                }
+                            }
+                        }
+                        .disabled(voice.isRecording || voice.lastRecordingURL == nil)
+
+                        Spacer()
+
+                        Button("Спросить") {
+                            Task { await russianAgent.ask(media: media.latestDownloaded, voice: voice) }
+                        }
+                        .disabled(russianAgent.isBusy || russianAgent.userText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    Button("Озвучить последний ответ") {
+                        russianAgent.speakLastResponse(voice: voice)
+                    }
+                    .disabled(russianAgent.lastResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    DisclosureGroup("AI backend") {
+                        TextField("http://192.168.1.10:1234/v1/chat/completions", text: $russianAgent.endpointText)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        TextField("Model", text: $russianAgent.modelText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("API key, если нужен", text: $russianAgent.apiKeyText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Toggle("Прикреплять последнее фото", isOn: $russianAgent.attachLatestPhoto)
+                        Text("Пустой endpoint = тестовый локальный ответ без интернета. Для LM Studio обычно подходит полный URL \u{201c}http://IP:1234/v1/chat/completions\u{201d}.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(russianAgent.status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if !russianAgent.lastResponse.isEmpty {
+                        Text(russianAgent.lastResponse)
+                            .font(.caption)
+                            .textSelection(.enabled)
+                    }
+
+                    if !russianAgent.lastPrompt.isEmpty {
+                        DisclosureGroup("Agent prompt") {
+                            Text(russianAgent.lastPrompt)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+
+                Section("Russian command for XiaoAI") {
+                    TextField("Русская команда", text: $xiaoAIRussianCommand, axis: .vertical)
+                        .lineLimit(2...6)
+
+                    HStack {
+                        Button("Из записи") {
+                            Task {
+                                if let transcript = await speech.transcribe(url: voice.lastRecordingURL) {
+                                    xiaoAIRussianCommand = transcript
+                                }
+                            }
+                        }
+                        .disabled(voice.isRecording || voice.lastRecordingURL == nil)
+
+                        Spacer()
+
+                        Button("Скопировать для XiaoAI") {
+                            UIPasteboard.general.string = xiaoAIPromptText
+                        }
+                        .disabled(xiaoAIRussianCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    Button("Произнести для XiaoAI") {
+                        voice.speakForNearbyAssistant(xiaoAISpokenPromptText)
+                    }
+                    .disabled(xiaoAIRussianCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if !xiaoAIRussianCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        DisclosureGroup("XiaoAI prompt") {
+                            Text(xiaoAIPromptText)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+
+                Section("Russian voice relay") {
+                    TextField("Русский текст для озвучки", text: $voiceRelayText, axis: .vertical)
+                        .lineLimit(3...8)
+
+                    HStack {
+                        Button("Вставить") {
+                            voiceRelayText = UIPasteboard.general.string ?? ""
+                        }
+
+                        Spacer()
+
+                        Button("Очистить") {
+                            voiceRelayText = ""
+                        }
+                        .disabled(voiceRelayText.isEmpty)
+                    }
+
+                    HStack {
+                        Button("Выбрать BFA7") {
+                            voice.prepareAudioSession()
+                            voice.preferBFA7InputIfAvailable()
+                        }
+
+                        Spacer()
+
+                        Button("Озвучить в очки") {
+                            voice.speak(voiceRelayText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
+                        .disabled(voiceRelayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+
                 Section("Latest media") {
                     if let latest = media.latestDownloaded {
                         VStack(alignment: .leading, spacing: 4) {
@@ -590,6 +724,31 @@ private struct AskView: View {
             }
             .navigationTitle("Ask")
         }
+    }
+
+    private var xiaoAISpokenPromptText: String {
+        let command = xiaoAIRussianCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = command.lowercased()
+        let wantsVision = lowercased.contains("виж")
+            || lowercased.contains("передо мной")
+            || lowercased.contains("опиши")
+            || lowercased.contains("посмотри")
+            || lowercased.contains("что вокруг")
+
+        if wantsVision {
+            return "Describe what I see now. Answer in Russian text."
+        }
+
+        return "Answer in Russian text. The user asks: \(command)"
+    }
+
+    private var xiaoAIPromptText: String {
+        let command = xiaoAIRussianCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        return """
+        User command in Russian: \(command)
+
+        Please understand the Russian command above and answer in Russian text. If this request uses the glasses camera, describe what I see. Keep the answer practical and concise.
+        """.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -663,6 +822,8 @@ private struct ImportLabSection: View {
     @State private var autoScanStatus = "Ожидание"
     @State private var autoScanReport = ""
     @State private var importAutoScanTask: Task<Void, Never>?
+    @State private var officialReplayTarget = "FE95/005F"
+    @State private var officialReplayStatus = "Ожидание"
 
     var body: some View {
         Section("Import Lab") {
@@ -838,6 +999,46 @@ private struct ImportLabSection: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
+                Text("Official iOS replay")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Replay target", text: $officialReplayTarget)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+
+                Button("Replay iOS Import 244+5") {
+                    runOfficialImportReplay(name: "iOS 244+5", frames: officialImport244Plus5Frames)
+                }
+                .disabled(!importTriggerEnabled || media.isBusy)
+
+                HStack {
+                    Button("Replay 244+5 + 61B") {
+                        runOfficialImportReplay(name: "iOS 244+5 + 61B", frames: officialImport244Plus5Frames + [officialImport61Frame])
+                    }
+                    .disabled(!importTriggerEnabled || media.isBusy)
+
+                    Spacer()
+
+                    Button("Replay 244+5 + 71B") {
+                        runOfficialImportReplay(name: "iOS 244+5 + 71B", frames: officialImport244Plus5Frames + [officialImport71Frame])
+                    }
+                    .disabled(!importTriggerEnabled || media.isBusy)
+                }
+
+                Text(officialReplayStatus)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text("Captured from Xiaomi iOS app: official writes target FE95/005F. Test 244+5 first; add 61B/71B only if 244+5 alone does not expose Wi-Fi/import.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Auto trigger scanner")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -932,6 +1133,51 @@ private struct ImportLabSection: View {
         importTriggerEnabled &&
         !importTriggerTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !importTriggerHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var officialImport244Plus5Frames: [String] {
+        [
+            "A5 A5 03 B7 F1 00 BE 7E 01 02 EA 8B 38 D6 AA FC 02 8B 5E FB 4E 87 79 DB AF 7F 91 FD 28 28 59 A9 05 D1 9F BB 93 02 1E 94 B2 70 D6 84 98 AE E5 03 B4 57 66 C3 6E 6A AE C2 A4 21 89 E8 D4 C1 9E 49 68 E8 58 EE 6B 28 F3 18 4D 9C C3 83 8B 98 30 07 5D 1C FE 20 99 A3 58 FA 16 07 50 48 EA 9C 22 9F 13 2F 76 37 B4 69 F8 1A 6C ED 2D 49 6A D0 5A 0F 05 9C 11 56 1C 7C B5 F8 15 3E AE 83 37 65 64 7C CC 4B 7F 71 4F DE 93 B8 71 F2 BB 45 AC 0F 01 A0 9E 8B C3 AD 55 F2 14 58 68 19 8B DF B5 DA B1 59 D9 69 89 46 C2 58 C9 09 79 1C 74 A6 EB F9 46 09 5C 32 B9 EC 9D 7F 52 12 D2 D3 49 44 08 7F 1B 0D 2D 47 4C 5F 37 27 F4 06 A4 F6 E7 62 F5 24 42 37 90 1E E1 19 A2 F0 FA BF BF 38 89 27 27 34 1E 2A 0B 36 BA 6C 2F 2F CE 79 11 AA 45 78 41 03 13 8F 3A 94 9D D7",
+            "9B 41 12 F0 CC"
+        ]
+    }
+
+    private var officialImport61Frame: String {
+        "A5 A5 03 B9 35 00 59 4E 01 02 EA 9D 38 DD 3A D0 C7 A1 1E 18 47 67 F6 CA AC 7A EB 80 4C 0E 30 DE 38 A8 C0 FF 73 6E 6D E3 94 29 AA ED F2 C2 D9 31 81 54 77 D5 32 42 B2 A3 98 35 DC BC AD"
+    }
+
+    private var officialImport71Frame: String {
+        "A5 A5 03 C1 3F 00 B6 7A 01 02 EA 9D 38 87 3A CA 2F 89 20 15 59 D5 90 BB CA 0F 9B B2 04 4F 1C 89 47 D1 82 AC 84 1E 57 B2 DA 70 8D FF E4 FA FD 27 C0 7E 77 F8 51 37 8D 83 92 40 A7 AD 94 83 D5 5A 64 F2 26 BB 21 55 86"
+    }
+
+    private func runOfficialImportReplay(name: String, frames: [String]) {
+        Task {
+            await MainActor.run {
+                officialReplayStatus = "\(name): пишу \(frames.count) frame(s)..."
+            }
+
+            for frame in frames {
+                let wrote = await MainActor.run {
+                    glasses.writeHexCommand(frame, target: officialReplayTarget)
+                }
+                guard wrote else {
+                    await MainActor.run {
+                        officialReplayStatus = "\(name): write failed"
+                    }
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+
+            await MainActor.run {
+                officialReplayStatus = "\(name): written, probing..."
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await media.refreshFileList()
+            await MainActor.run {
+                officialReplayStatus = "\(name): probe done, \(media.status)"
+            }
+        }
     }
 
     private var createWifiAPCandidateHex: String {

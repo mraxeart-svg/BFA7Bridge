@@ -144,6 +144,27 @@ final class VoiceIO: NSObject, ObservableObject {
         refreshRouteStatus()
     }
 
+    func speakForNearbyAssistant(_ text: String) {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker])
+            try session.setActive(true)
+            try session.overrideOutputAudioPort(.speaker)
+        } catch {
+            status = "Ошибка speaker route: \(error.localizedDescription)"
+        }
+
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.9
+        synthesizer.speak(utterance)
+        status = "Команда для XiaoAI произносится через iPhone"
+        refreshRouteStatus()
+    }
+
     func stopSpeaking() {
         synthesizer.stopSpeaking(at: .immediate)
         status = "Озвучивание остановлено"

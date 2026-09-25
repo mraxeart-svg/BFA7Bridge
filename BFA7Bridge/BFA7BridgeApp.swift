@@ -9,6 +9,7 @@ struct BFA7BridgeApp: App {
     @StateObject private var speech = SpeechTranscriber()
     @StateObject private var systemCapture = SystemCaptureProbe()
     @StateObject private var commands = CommandSession()
+    @StateObject private var russianAgent = RussianAgentSession()
     @StateObject private var sessions = BFA7SessionStore()
     @StateObject private var wifiJoiner = BFA7WiFiJoiner()
 
@@ -23,6 +24,7 @@ struct BFA7BridgeApp: App {
                 .environmentObject(speech)
                 .environmentObject(systemCapture)
                 .environmentObject(commands)
+                .environmentObject(russianAgent)
                 .environmentObject(sessions)
                 .environmentObject(wifiJoiner)
         }
