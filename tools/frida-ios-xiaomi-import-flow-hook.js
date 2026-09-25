@@ -113,35 +113,35 @@ function logPointerCandidate(label, pointer, length) {
   log(`${label} candidate=${pointer} len=${length} ${hexDump(pointer, length, 512)}`);
 }
 
-function logSwiftDataReturn(label, context) {
-  const x0 = context.x0;
-  const x1 = context.x1;
-  const x2 = context.x2;
-  const x3 = context.x3;
+function logSwiftDataWords(label, x0, x1, x2, x3) {
   const countFromX0 = pointerHigh32(x0);
   const inlineX0 = pointerLowBytes(x0, 8);
   const inlineX1 = pointerLowBytes(x1, 8);
   const taggedX1 = stripSwiftPointerTag(x1);
 
-  log(`${label} ret-inline x0-le=${bytesToHex(inlineX0)} ascii=${bytesToAscii(inlineX0)} x1-le=${bytesToHex(inlineX1)} ascii=${bytesToAscii(inlineX1)} count-hi32=${countFromX0}`);
+  log(`${label} swiftdata-inline x0-le=${bytesToHex(inlineX0)} ascii=${bytesToAscii(inlineX0)} x1-le=${bytesToHex(inlineX1)} ascii=${bytesToAscii(inlineX1)} count-hi32=${countFromX0}`);
 
   if (countFromX0 > 0 && countFromX0 <= 4096) {
-    logPointerCandidate(`${label} ret-x1-tagged`, taggedX1, countFromX0);
-    logPointerCandidate(`${label} ret-x1-raw`, x1, countFromX0);
+    logPointerCandidate(`${label} swiftdata-x1-tagged`, taggedX1, countFromX0);
+    logPointerCandidate(`${label} swiftdata-x1-raw`, x1, countFromX0);
     [0, 8, 16, 24, 32, 40, 48, 56].forEach(offset => {
       const slot = taggedX1.add(offset);
       const candidate = safe(() => Memory.readPointer(slot), ptr('0'));
-      logPointerCandidate(`${label} ret-x1-slot+${offset}`, candidate, countFromX0);
+      logPointerCandidate(`${label} swiftdata-x1-slot+${offset}`, candidate, countFromX0);
     });
   }
 
   if (!x3.isNull()) {
-    logPointerCandidate(`${label} ret-x3`, x3, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
+    logPointerCandidate(`${label} swiftdata-x3`, x3, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
   }
 
   if (!x2.isNull()) {
-    logPointerCandidate(`${label} ret-x2`, x2, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
+    logPointerCandidate(`${label} swiftdata-x2`, x2, Math.min(countFromX0 > 0 ? countFromX0 : 128, 512));
   }
+}
+
+function logSwiftDataReturn(label, context) {
+  logSwiftDataWords(label, context.x0, context.x1, context.x2, context.x3);
 }
 
 function nsDataInfo(objPtr, limit) {
@@ -302,6 +302,7 @@ function logFlowData(label, args, context) {
   const x5Length = maybeLength(args[5]);
   const x7Length = maybeLength(args[7]);
   log(`${label} regs x0=${args[0]} x1=${args[1]} x2=${args[2]} x3=${args[3]} x4=${args[4]} x5=${args[5]} x6=${args[6]} x7=${args[7]}`);
+  logSwiftDataWords(`${label} arg-x0/x1`, args[0], args[1], args[2], args[3]);
 
   if (x5Length > 0) {
     log(`${label} arg-x3/x5 ${hexDump(args[3], x5Length, 512)}`);
