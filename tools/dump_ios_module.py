@@ -44,8 +44,33 @@ rpc.exports = {
       return false;
     }
 
-    const size = module.size;
+    let size = module.size;
     const base = module.base;
+    try {
+      const header = base;
+      const magic = Memory.readU32(header);
+      if (magic === 0xfeedfacf) {
+        const ncmds = Memory.readU32(header.add(16));
+        let cursor = header.add(32);
+        let maxEnd = 0;
+        for (let i = 0; i < ncmds; i += 1) {
+          const cmd = Memory.readU32(cursor);
+          const cmdsize = Memory.readU32(cursor.add(4));
+          if (cmd === 0x19) {
+            const vmaddr = Memory.readU64(cursor.add(24));
+            const vmsize = Memory.readU64(cursor.add(32));
+            const end = Number(vmaddr.add(vmsize));
+            if (end > maxEnd) maxEnd = end;
+          }
+          cursor = cursor.add(cmdsize);
+        }
+        if (maxEnd > size && maxEnd < 64 * 1024 * 1024) {
+          size = maxEnd;
+        }
+      }
+    } catch (error) {
+      send({ kind: 'note', message: 'full-size parse failed: ' + String(error) });
+    }
     const step = Math.max(4096, Math.min(chunkSize || 65536, 262144));
     send({ kind: 'meta', name: module.name, path: module.path, base: base.toString(), size: size });
 
@@ -114,6 +139,8 @@ def main() -> int:
         elif kind == "hole":
             holes += 1
             print(f"hole offset={payload.get('offset')} size={payload.get('size')} {payload.get('message')}")
+        elif kind == "note":
+            print(f"note {payload.get('message')}")
         elif kind == "error":
             failed.append(str(payload.get("message")))
             done.set()
