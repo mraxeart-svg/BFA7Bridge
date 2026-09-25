@@ -27,7 +27,7 @@ private struct DeviceView: View {
     @State private var rawWriteEnabled = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("Bluetooth") {
                     HStack {
@@ -225,7 +225,7 @@ private struct CaptureView: View {
     @EnvironmentObject private var wifiJoiner: BFA7WiFiJoiner
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("System Capture") {
                     HStack {
@@ -381,10 +381,8 @@ private struct CaptureView: View {
                     Section("Latest") {
                         mediaRow(latest)
                         if let url = latest.localURL {
-                            Button {
-                                UIPasteboard.general.string = url.path
-                            } label: {
-                                Label("Скопировать путь", systemImage: "doc.on.doc")
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
                             }
                         }
                     }
@@ -461,7 +459,7 @@ private struct AskView: View {
     @State private var xiaoAIRussianCommand = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("Command") {
                     TextField("Команда", text: $commands.commandText, axis: .vertical)
@@ -701,10 +699,8 @@ private struct AskView: View {
                                 .foregroundStyle(.secondary)
                         }
                         if let url = latest.localURL {
-                            Button {
-                                UIPasteboard.general.string = url.path
-                            } label: {
-                                Label("Скопировать путь", systemImage: "doc.on.doc")
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
                             }
                         }
                     } else {
@@ -797,7 +793,7 @@ private struct DiagnosticsSection: View {
 
 private struct LabView: View {
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ImportLabSection()
                 WearPacketLabSection()
