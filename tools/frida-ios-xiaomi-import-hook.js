@@ -17,7 +17,7 @@
 const STATE = {
   hooked: new Set(),
   symbolHookCount: 0,
-  maxSymbolHooks: 120
+  maxSymbolHooks: 360
 };
 
 function now() {
@@ -85,6 +85,72 @@ function objSummary(objPtr) {
   }, `${objPtr}`);
 }
 
+function nsDataLength(objPtr) {
+  if (!ObjC.available || objPtr.isNull()) {
+    return -1;
+  }
+  return safe(() => {
+    const obj = new ObjC.Object(objPtr);
+    if (!obj.respondsToSelector_('length') || !obj.respondsToSelector_('bytes')) {
+      return -1;
+    }
+    return Number(obj.length());
+  }, -1);
+}
+
+function logBacktrace(label, context) {
+  const trace = safe(() => Thread.backtrace(context, Backtracer.ACCURATE)
+    .slice(0, 18)
+    .map(address => `    ${DebugSymbol.fromAddress(address).toString()}`)
+    .join('\n'), '');
+  if (trace.length > 0) {
+    log(`${label} backtrace:\n${trace}`);
+  }
+}
+
+function pointerLooksReadable(address) {
+  return safe(() => {
+    if (address.isNull()) {
+      return false;
+    }
+    const range = Process.findRangeByAddress(address);
+    return !!range && range.protection.indexOf('r') >= 0;
+  }, false);
+}
+
+function maybeDumpDataArg(label, argPtr, limit) {
+  if (!ObjC.available || argPtr.isNull()) {
+    return;
+  }
+  const nsInfo = safe(() => {
+    const obj = new ObjC.Object(argPtr);
+    if (obj.respondsToSelector_('length') && obj.respondsToSelector_('bytes')) {
+      const length = Number(obj.length());
+      if (length > 0 && length <= 4096) {
+        return nsDataInfo(argPtr, limit || 384);
+      }
+    }
+    return null;
+  }, null);
+  if (nsInfo) {
+    log(`${label} ${nsInfo}`);
+    return;
+  }
+
+  if (pointerLooksReadable(argPtr)) {
+    const raw = safe(() => readBytes(argPtr, 64, 64), '');
+    if (raw.length > 0) {
+      log(`${label} raw64=${raw}`);
+    }
+  }
+}
+
+function dumpPotentialArgs(prefix, args, count) {
+  for (let index = 0; index < count; index += 1) {
+    maybeDumpDataArg(`${prefix} arg${index}=${args[index]}`, args[index], 384);
+  }
+}
+
 function characteristicSummary(charPtr) {
   if (!ObjC.available || charPtr.isNull()) {
     return `${charPtr}`;
@@ -128,6 +194,10 @@ function hookCoreBluetoothWrites() {
       const characteristic = characteristicSummary(args[3]);
       const writeType = safe(() => args[4].toInt32(), '?');
       log(`CB WRITE characteristic=${characteristic} type=${writeType} ${dataInfo}`);
+      const length = nsDataLength(args[2]);
+      if (characteristic.indexOf('005F') >= 0 || characteristic.indexOf('005E') >= 0 || length >= 24) {
+        logBacktrace(`CB WRITE ${characteristic} len=${length}`, this.context);
+      }
     }
   });
 
@@ -221,6 +291,8 @@ function enumerateSymbols(moduleName) {
   }, []);
 }
 
+const prioritySymbolTerms = /MIWBTReqC7timeOut7channel7package|MIWBTReqC32convertPackagetoTransmissionData|MIWBTReqC16transmissionData|MIWBTChannelC16transmissionData|MIWBTChannelC11payloadData|MIWChannelPayloadC11payloadData|MIWFlowEncryptC7encrypt|MIWFlowEncryptC7decrypt|MIWBTSessionC10setEncrypt|WearSystemV13wifiApRequest|WearWiFiAPV7RequestV9frequency|WearWiFiAPV7RequestV13SwiftProtobuf7Message|WearPacket|serializedBytes/i;
+
 function hookSymbol(symbol, moduleName) {
   const key = `sym:${moduleName}:${symbol.name}:${symbol.address}`;
   if (STATE.hooked.has(key) || STATE.symbolHookCount >= STATE.maxSymbolHooks) {
@@ -231,14 +303,22 @@ function hookSymbol(symbol, moduleName) {
   Interceptor.attach(symbol.address, {
     onEnter(args) {
       this.symbolName = symbol.name;
+      this.priority = prioritySymbolTerms.test(symbol.name);
       const argText = [];
       for (let index = 0; index < 6; index += 1) {
         argText.push(`a${index}=${args[index]}`);
       }
       log(`SYM ENTER ${moduleName} ${symbol.name} ${argText.join(' ')}`);
+      if (this.priority) {
+        dumpPotentialArgs(`SYM DATA ${symbol.name}`, args, 6);
+        logBacktrace(`SYM ${symbol.name}`, this.context);
+      }
     },
     onLeave(retval) {
       log(`SYM LEAVE ${moduleName} ${this.symbolName} ret=${retval}`);
+      if (this.priority) {
+        maybeDumpDataArg(`SYM RET ${this.symbolName}`, retval, 384);
+      }
     }
   });
   log(`HOOK symbol ${moduleName} ${symbol.name}`);
@@ -246,14 +326,20 @@ function hookSymbol(symbol, moduleName) {
 
 function hookMIWSymbols() {
   const moduleTerms = /MIWBT|MIWear|MIWWifi|HCWCompanion|Xiaomi|Super/i;
-  const symbolTerms = /MIWBTReq|MIWBTChannel|MIWChannelPayload|MIWBTSession|MIWFlowEncrypt|authAppConfirmToDevice|aesCCMEncrypt|WearPacket|WearSystem|WearWiFiAP|wifiApRequest|wifiApResult|payloadData|transmissionData|serializedBytes|encrypt\(data|decrypt\(data/i;
+  const symbolTerms = /MIWBTReq|MIWBTChannel|MIWChannelPayload|MIWBTSession|MIWFlowEncrypt|authAppConfirmToDevice|aesCCMEncrypt|WearPacket|WearSystem|WearWiFiAP|wifiApRequest|wifiApResult|payloadData|transmissionData|serializedBytes|decodeMessage|traverse|encrypt\(data|decrypt\(data/i;
 
   Process.enumerateModules().forEach(module => {
     if (!moduleTerms.test(module.name) && !moduleTerms.test(module.path || '')) {
       return;
     }
     log(`SCAN module ${module.name} ${module.path}`);
-    enumerateSymbols(module.name).forEach(symbol => {
+    const symbols = enumerateSymbols(module.name);
+    symbols.forEach(symbol => {
+      if (symbol.address && prioritySymbolTerms.test(symbol.name)) {
+        hookSymbol(symbol, module.name);
+      }
+    });
+    symbols.forEach(symbol => {
       if (symbol.address && symbolTerms.test(symbol.name)) {
         hookSymbol(symbol, module.name);
       }
