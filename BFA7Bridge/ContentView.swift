@@ -307,8 +307,8 @@ private struct CaptureView: View {
                 }
 
                 Section("Wi-Fi Probe") {
-                    TextField("Probe paths", text: $media.probePathsText)
-                        .lineLimit(4)
+                    TextField("Probe paths", text: $media.probePathsText, axis: .vertical)
+                        .lineLimit(4...10)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -326,8 +326,8 @@ private struct CaptureView: View {
                         }
                     }
 
-                    TextField("Method probe paths", text: $media.methodProbePathsText)
-                        .lineLimit(2)
+                    TextField("Method probe paths", text: $media.methodProbePathsText, axis: .vertical)
+                        .lineLimit(2...6)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -337,8 +337,8 @@ private struct CaptureView: View {
                     }
                     .disabled(media.isBusy)
 
-                    TextField("Latest file template probe", text: $media.latestTemplateProbeText)
-                        .lineLimit(4)
+                    TextField("Latest file template probe", text: $media.latestTemplateProbeText, axis: .vertical)
+                        .lineLimit(4...12)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -464,8 +464,8 @@ private struct AskView: View {
         NavigationView {
             List {
                 Section("Command") {
-                    TextField("Команда", text: $commands.commandText)
-                        .lineLimit(2)
+                    TextField("Команда", text: $commands.commandText, axis: .vertical)
+                        .lineLimit(2...4)
                     Button("Скачать с очков и подготовить") {
                         Task {
                             await media.downloadLatest()
@@ -562,8 +562,8 @@ private struct AskView: View {
                 }
 
                 Section("Russian AI agent") {
-                    TextField("Русская команда агенту", text: $russianAgent.userText)
-                        .lineLimit(2)
+                    TextField("Русская команда агенту", text: $russianAgent.userText, axis: .vertical)
+                        .lineLimit(2...6)
 
                     HStack {
                         Button("Из записи") {
@@ -625,8 +625,8 @@ private struct AskView: View {
                 }
 
                 Section("Russian command for XiaoAI") {
-                    TextField("Русская команда", text: $xiaoAIRussianCommand)
-                        .lineLimit(2)
+                    TextField("Русская команда", text: $xiaoAIRussianCommand, axis: .vertical)
+                        .lineLimit(2...6)
 
                     HStack {
                         Button("Из записи") {
@@ -661,8 +661,8 @@ private struct AskView: View {
                 }
 
                 Section("Russian voice relay") {
-                    TextField("Русский текст для озвучки", text: $voiceRelayText)
-                        .lineLimit(3)
+                    TextField("Русский текст для озвучки", text: $voiceRelayText, axis: .vertical)
+                        .lineLimit(3...8)
 
                     HStack {
                         Button("Вставить") {
@@ -917,8 +917,8 @@ private struct ImportLabSection: View {
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
-            TextField("Import trigger HEX candidate", text: $importTriggerHex)
-                .lineLimit(2)
+            TextField("Import trigger HEX candidate", text: $importTriggerHex, axis: .vertical)
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
@@ -1068,8 +1068,8 @@ private struct ImportLabSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                TextField("Targets", text: $autoScanTargetsText)
-                    .lineLimit(2)
+                TextField("Targets", text: $autoScanTargetsText, axis: .vertical)
+                    .lineLimit(2...7)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
@@ -1617,14 +1617,14 @@ private struct SVAuthLabSection: View {
                 random = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10))
             }
 
-            TextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey)
-                .lineLimit(2)
+            TextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey, axis: .vertical)
+                .lineLimit(2...4)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
-            TextField("StartChannel response hex", text: $startResponseHex)
-                .lineLimit(2)
+            TextField("StartChannel response hex", text: $startResponseHex, axis: .vertical)
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
@@ -1940,14 +1940,14 @@ private struct WiFiImportChecklistSection: View {
             TextField("DNS", text: binding(\.dns))
                 .keyboardType(.numbersAndPunctuation)
                 .textInputAutocapitalization(.never)
-            TextField("Open ports", text: binding(\.openPorts))
-                .lineLimit(1)
+            TextField("Open ports", text: binding(\.openPorts), axis: .vertical)
+                .lineLimit(1...3)
                 .textInputAutocapitalization(.never)
-            TextField("Protocol/endpoints", text: binding(\.protocolNotes))
-                .lineLimit(2)
+            TextField("Protocol/endpoints", text: binding(\.protocolNotes), axis: .vertical)
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.never)
-            TextField("Capture notes", text: binding(\.captureNotes))
-                .lineLimit(2)
+            TextField("Capture notes", text: binding(\.captureNotes), axis: .vertical)
+                .lineLimit(2...6)
 
             HStack {
                 Button("Copy report") {

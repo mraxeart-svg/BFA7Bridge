@@ -18,6 +18,7 @@
 		AA0000000000000000000019 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000029 /* AIProvider.swift */; };
 		AA000000000000000000001A /* VoiceIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002A /* VoiceIO.swift */; };
 		AA000000000000000000001B /* CommandSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002B /* CommandSession.swift */; };
+		AA000000000000000000001C /* BFA7AppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002C /* BFA7AppIntents.swift */; };
 		AA000000000000000000001D /* ProtocolLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002D /* ProtocolLab.swift */; };
 		AA000000000000000000001E /* WiFiImportLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002E /* WiFiImportLab.swift */; };
 		AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002F /* SystemCaptureProbe.swift */; };
@@ -180,6 +181,7 @@
 				AA0000000000000000000019 /* AIProvider.swift in Sources */,
 				AA000000000000000000001A /* VoiceIO.swift in Sources */,
 				AA000000000000000000001B /* CommandSession.swift in Sources */,
+				AA000000000000000000001C /* BFA7AppIntents.swift in Sources */,
 				AA000000000000000000001D /* ProtocolLab.swift in Sources */,
 				AA000000000000000000001E /* WiFiImportLab.swift in Sources */,
 				AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */,
