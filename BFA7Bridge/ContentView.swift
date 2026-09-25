@@ -823,6 +823,7 @@ private struct ImportLabSection: View {
     @State private var autoScanReport = ""
     @State private var importAutoScanTask: Task<Void, Never>?
     @State private var officialReplayTarget = "FE95/005F"
+    @State private var officialReplaySeq = "80"
     @State private var officialReplayStatus = "Ожидание"
 
     var body: some View {
@@ -1008,6 +1009,21 @@ private struct ImportLabSection: View {
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
 
+                HStack {
+                    Text("seq")
+                    TextField("80", text: $officialReplaySeq)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+                        .frame(maxWidth: 70)
+
+                    Spacer()
+
+                    Button("Next") {
+                        officialReplaySeq = nextHexByte(after: officialReplaySeq)
+                    }
+                }
+
                 Button("Replay iOS Import 244+5") {
                     runOfficialImportReplay(name: "iOS 244+5", frames: officialImport244Plus5Frames)
                 }
@@ -1031,7 +1047,7 @@ private struct ImportLabSection: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Text("Captured from Xiaomi iOS app: official writes target FE95/005F. Test 244+5 first; add 61B/71B only if 244+5 alone does not expose Wi-Fi/import.")
+                Text("Captured from Xiaomi iOS app: official writes target FE95/005F. CRC16/ARC is payload-only, so this replay rewrites seq without touching payload CRC. Test 244+5 first; add 61B/71B only if 244+5 alone does not expose Wi-Fi/import.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -1152,19 +1168,26 @@ private struct ImportLabSection: View {
 
     private func runOfficialImportReplay(name: String, frames: [String]) {
         Task {
+            var seq = UInt8(normalizedHexByte(officialReplaySeq) ?? "80", radix: 16) ?? 0x80
             await MainActor.run {
-                officialReplayStatus = "\(name): пишу \(frames.count) frame(s)..."
+                officialReplayStatus = "\(name): пишу \(frames.count) frame(s), seq=\(String(format: "%02X", seq))..."
             }
 
             for frame in frames {
+                let rewrittenFrame = officialReplayFrame(frame, seq: seq)
                 let wrote = await MainActor.run {
-                    glasses.writeHexCommand(frame, target: officialReplayTarget)
+                    glasses.writeHexCommand(rewrittenFrame, target: officialReplayTarget)
                 }
                 guard wrote else {
                     await MainActor.run {
                         officialReplayStatus = "\(name): write failed"
                     }
                     return
+                }
+
+                if isA5PayloadStart(frame) {
+                    seq = seq == 0x7f ? 0x80 : seq &+ 1
+                    await MainActor.run { officialReplaySeq = String(format: "%02X", seq) }
                 }
                 try? await Task.sleep(nanoseconds: 120_000_000)
             }
@@ -1178,6 +1201,18 @@ private struct ImportLabSection: View {
                 officialReplayStatus = "\(name): probe done, \(media.status)"
             }
         }
+    }
+
+    private func isA5PayloadStart(_ hex: String) -> Bool {
+        guard let data = Data(bfa7HexString: hex), data.count >= 8 else { return false }
+        return data[0] == 0xA5 && data[1] == 0xA5 && data[2] == 0x03
+    }
+
+    private func officialReplayFrame(_ hex: String, seq: UInt8) -> String {
+        guard var data = Data(bfa7HexString: hex), data.count >= 8 else { return hex }
+        guard data[0] == 0xA5, data[1] == 0xA5, data[2] == 0x03 else { return hex }
+        data[3] = seq
+        return data.bfa7HexString
     }
 
     private var createWifiAPCandidateHex: String {
