@@ -59,13 +59,14 @@ function nsDataInfo(objPtr, limit) {
   return safe(() => {
     const obj = new ObjC.Object(objPtr);
     const cls = obj.$className || '';
-    if (!obj.respondsToSelector_('length') || !obj.respondsToSelector_('bytes')) {
-      return `${cls}: ${obj.toString()}`;
-    }
     const length = Number(obj.length());
     const bytes = obj.bytes();
     return `${cls} len=${length} hex=${readBytes(bytes, length, limit || 1024)}`;
-  }, '<nsdata-error>');
+  }, safe(() => {
+    const obj = new ObjC.Object(objPtr);
+    const cls = obj.$className || '';
+    return `${cls}: ${obj.toString()}`;
+  }, `<nsdata-error ptr=${objPtr}>`));
 }
 
 function nsDataLength(objPtr) {
