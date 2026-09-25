@@ -824,6 +824,7 @@ private struct ImportLabSection: View {
     @State private var importAutoScanTask: Task<Void, Never>?
     @State private var officialReplayTarget = "FE95/005F"
     @State private var officialReplaySeq = "80"
+    @State private var officialReplayAppKey = ""
     @State private var officialReplayStatus = "Ожидание"
 
     var body: some View {
@@ -1024,6 +1025,21 @@ private struct ImportLabSection: View {
                     }
                 }
 
+                TextField("MIWBT appKey, 16 bytes hex", text: $officialReplayAppKey, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+
+                Button("Write AES-CTR AP trigger") {
+                    guard let frame = officialAESCTRAPTriggerFrame else {
+                        officialReplayStatus = "AES-CTR AP trigger: нужен 16-byte appKey hex"
+                        return
+                    }
+                    runOfficialImportReplay(name: "iOS AES-CTR AP trigger", frames: [frame])
+                }
+                .disabled(!importTriggerEnabled || media.isBusy)
+
                 Button("Replay XOR AP trigger") {
                     runOfficialImportReplay(name: "iOS XOR AP trigger", frames: [officialXorAPTriggerFrame])
                 }
@@ -1052,7 +1068,7 @@ private struct ImportLabSection: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Text("Captured from Xiaomi iOS app: official writes target FE95/005F. CRC16/ARC is payload-only, so this replay rewrites seq without touching payload CRC. Test 244+5 first; add 61B/71B only if 244+5 alone does not expose Wi-Fi/import.")
+                Text("Captured from Xiaomi iOS app: official writes target FE95/005F. AES-CTR AP trigger uses MIWBTCore appKey as both AES key and CTR initial counter; CRC16/ARC is payload-only.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -1156,11 +1172,23 @@ private struct ImportLabSection: View {
         !importTriggerHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var officialXorAPTriggerFrame: String {
-        let plaintext = Data([
+    private var wifiAPRequestPlaintext: Data {
+        Data([
             0x08, 0x0E, 0x10, 0x05, 0x82, 0x01, 0x0E, 0x2A, 0x0C, 0x08, 0x00,
             0x10, 0x00, 0x18, 0x00, 0x20, 0x00, 0x28, 0x00, 0x30, 0x01
         ])
+    }
+
+    private var officialAESCTRAPTriggerFrame: String? {
+        guard let appKey = Data(bfa7HexString: officialReplayAppKey), appKey.count == 16 else { return nil }
+        guard let cipher = try? MIWBTAESCTR.encrypt(wifiAPRequestPlaintext, key: appKey, initialCounter: appKey) else { return nil }
+        var payload = Data([0x01, 0x02])
+        payload.append(cipher)
+        return a5PayloadFrame(payload: payload, sequence: 0x80).bfa7HexString
+    }
+
+    private var officialXorAPTriggerFrame: String {
+        let plaintext = wifiAPRequestPlaintext
         let keystream = Data([
             0xF1, 0x9C, 0xDE, 0xCF, 0x6F, 0x58, 0x39, 0x48, 0x5A, 0xCF, 0x18,
             0x7C, 0xAC, 0xC7, 0x91, 0xCA, 0x8C, 0x82, 0x97, 0x27, 0x23
