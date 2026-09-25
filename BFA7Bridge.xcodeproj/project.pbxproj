@@ -18,6 +18,7 @@
 		AA0000000000000000000019 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000029 /* AIProvider.swift */; };
 		AA000000000000000000001A /* VoiceIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002A /* VoiceIO.swift */; };
 		AA000000000000000000001B /* CommandSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002B /* CommandSession.swift */; };
+		AA000000000000000000001C /* BFA7AppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002C /* BFA7AppIntents.swift */; };
 		AA000000000000000000001D /* ProtocolLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002D /* ProtocolLab.swift */; };
 		AA000000000000000000001E /* WiFiImportLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002E /* WiFiImportLab.swift */; };
 		AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002F /* SystemCaptureProbe.swift */; };
@@ -183,6 +184,7 @@
 				AA0000000000000000000019 /* AIProvider.swift in Sources */,
 				AA000000000000000000001A /* VoiceIO.swift in Sources */,
 				AA000000000000000000001B /* CommandSession.swift in Sources */,
+				AA000000000000000000001C /* BFA7AppIntents.swift in Sources */,
 				AA000000000000000000001D /* ProtocolLab.swift in Sources */,
 				AA000000000000000000001E /* WiFiImportLab.swift in Sources */,
 				AA000000000000000000001F /* SystemCaptureProbe.swift in Sources */,
@@ -209,7 +211,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_ENTITLEMENTS = BFA7Bridge/BFA7Bridge.entitlements;
 				INFOPLIST_FILE = BFA7Bridge/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mraxeart.BFA7Bridge;
 				PRODUCT_NAME = BFA7Bridge;
 				SWIFT_VERSION = 5.0;
@@ -228,7 +230,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_ENTITLEMENTS = BFA7Bridge/BFA7Bridge.entitlements;
 				INFOPLIST_FILE = BFA7Bridge/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mraxeart.BFA7Bridge;
 				PRODUCT_NAME = BFA7Bridge;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";

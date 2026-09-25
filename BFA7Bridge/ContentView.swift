@@ -16,28 +16,6 @@ struct ContentView: View {
     }
 }
 
-
-private struct CompatMultilineTextField: View {
-    let title: String
-    @Binding var text: String
-
-    init(_ title: String, text: Binding<String>) {
-        self.title = title
-        self._text = text
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextEditor(text: $text)
-                .font(.body.monospaced())
-                .frame(minHeight: 72)
-        }
-    }
-}
-
 private struct DeviceView: View {
     @EnvironmentObject private var glasses: GlassesTransport
     @EnvironmentObject private var sessions: BFA7SessionStore
@@ -49,7 +27,7 @@ private struct DeviceView: View {
     @State private var rawWriteEnabled = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("Bluetooth") {
                     HStack {
@@ -247,7 +225,7 @@ private struct CaptureView: View {
     @EnvironmentObject private var wifiJoiner: BFA7WiFiJoiner
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("System Capture") {
                     HStack {
@@ -329,7 +307,7 @@ private struct CaptureView: View {
                 }
 
                 Section("Wi-Fi Probe") {
-                    CompatMultilineTextField("Probe paths", text: $media.probePathsText)
+                    TextField("Probe paths", text: $media.probePathsText, axis: .vertical)
                         .lineLimit(4...10)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -348,7 +326,7 @@ private struct CaptureView: View {
                         }
                     }
 
-                    CompatMultilineTextField("Method probe paths", text: $media.methodProbePathsText)
+                    TextField("Method probe paths", text: $media.methodProbePathsText, axis: .vertical)
                         .lineLimit(2...6)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -359,7 +337,7 @@ private struct CaptureView: View {
                     }
                     .disabled(media.isBusy)
 
-                    CompatMultilineTextField("Latest file template probe", text: $media.latestTemplateProbeText)
+                    TextField("Latest file template probe", text: $media.latestTemplateProbeText, axis: .vertical)
                         .lineLimit(4...12)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -403,10 +381,8 @@ private struct CaptureView: View {
                     Section("Latest") {
                         mediaRow(latest)
                         if let url = latest.localURL {
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Label("Открыть файл", systemImage: "square.and.arrow.up")
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
                             }
                         }
                     }
@@ -483,10 +459,10 @@ private struct AskView: View {
     @State private var xiaoAIRussianCommand = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("Command") {
-                    CompatMultilineTextField("Команда", text: $commands.commandText)
+                    TextField("Команда", text: $commands.commandText, axis: .vertical)
                         .lineLimit(2...4)
                     Button("Скачать с очков и подготовить") {
                         Task {
@@ -584,7 +560,7 @@ private struct AskView: View {
                 }
 
                 Section("Russian AI agent") {
-                    CompatMultilineTextField("Русская команда агенту", text: $russianAgent.userText)
+                    TextField("Русская команда агенту", text: $russianAgent.userText, axis: .vertical)
                         .lineLimit(2...6)
 
                     HStack {
@@ -647,7 +623,7 @@ private struct AskView: View {
                 }
 
                 Section("Russian command for XiaoAI") {
-                    CompatMultilineTextField("Русская команда", text: $xiaoAIRussianCommand)
+                    TextField("Русская команда", text: $xiaoAIRussianCommand, axis: .vertical)
                         .lineLimit(2...6)
 
                     HStack {
@@ -683,7 +659,7 @@ private struct AskView: View {
                 }
 
                 Section("Russian voice relay") {
-                    CompatMultilineTextField("Русский текст для озвучки", text: $voiceRelayText)
+                    TextField("Русский текст для озвучки", text: $voiceRelayText, axis: .vertical)
                         .lineLimit(3...8)
 
                     HStack {
@@ -723,10 +699,8 @@ private struct AskView: View {
                                 .foregroundStyle(.secondary)
                         }
                         if let url = latest.localURL {
-                            Button {
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Label("Открыть файл", systemImage: "square.and.arrow.up")
+                            ShareLink(item: url) {
+                                Label("Поделиться файлом", systemImage: "square.and.arrow.up")
                             }
                         }
                     } else {
@@ -819,7 +793,7 @@ private struct DiagnosticsSection: View {
 
 private struct LabView: View {
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ImportLabSection()
                 WearPacketLabSection()
@@ -940,7 +914,7 @@ private struct ImportLabSection: View {
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
-            CompatMultilineTextField("Import trigger HEX candidate", text: $importTriggerHex)
+            TextField("Import trigger HEX candidate", text: $importTriggerHex, axis: .vertical)
                 .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
@@ -1051,7 +1025,7 @@ private struct ImportLabSection: View {
                     }
                 }
 
-                CompatMultilineTextField("MIWBT appKey, 16 bytes hex", text: $officialReplayAppKey)
+                TextField("MIWBT appKey, 16 bytes hex", text: $officialReplayAppKey, axis: .vertical)
                     .lineLimit(1...3)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -1106,7 +1080,7 @@ private struct ImportLabSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                CompatMultilineTextField("Targets", text: $autoScanTargetsText)
+                TextField("Targets", text: $autoScanTargetsText, axis: .vertical)
                     .lineLimit(2...7)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -1667,13 +1641,13 @@ private struct SVAuthLabSection: View {
                 random = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10))
             }
 
-            CompatMultilineTextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey)
+            TextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey, axis: .vertical)
                 .lineLimit(2...4)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
-            CompatMultilineTextField("StartChannel response hex", text: $startResponseHex)
+            TextField("StartChannel response hex", text: $startResponseHex, axis: .vertical)
                 .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
@@ -1990,13 +1964,13 @@ private struct WiFiImportChecklistSection: View {
             TextField("DNS", text: binding(\.dns))
                 .keyboardType(.numbersAndPunctuation)
                 .textInputAutocapitalization(.never)
-            CompatMultilineTextField("Open ports", text: binding(\.openPorts))
+            TextField("Open ports", text: binding(\.openPorts), axis: .vertical)
                 .lineLimit(1...3)
                 .textInputAutocapitalization(.never)
-            CompatMultilineTextField("Protocol/endpoints", text: binding(\.protocolNotes))
+            TextField("Protocol/endpoints", text: binding(\.protocolNotes), axis: .vertical)
                 .lineLimit(2...5)
                 .textInputAutocapitalization(.never)
-            CompatMultilineTextField("Capture notes", text: binding(\.captureNotes))
+            TextField("Capture notes", text: binding(\.captureNotes), axis: .vertical)
                 .lineLimit(2...6)
 
             HStack {
