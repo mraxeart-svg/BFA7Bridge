@@ -330,6 +330,7 @@ private struct CaptureView: View {
 
                 Section("Wi-Fi Probe") {
                     CompatMultilineTextField("Probe paths", text: $media.probePathsText)
+                        .lineLimit(4...10)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -348,6 +349,7 @@ private struct CaptureView: View {
                     }
 
                     CompatMultilineTextField("Method probe paths", text: $media.methodProbePathsText)
+                        .lineLimit(2...6)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -358,6 +360,7 @@ private struct CaptureView: View {
                     .disabled(media.isBusy)
 
                     CompatMultilineTextField("Latest file template probe", text: $media.latestTemplateProbeText)
+                        .lineLimit(4...12)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.body.monospaced())
@@ -484,6 +487,7 @@ private struct AskView: View {
             List {
                 Section("Command") {
                     CompatMultilineTextField("Команда", text: $commands.commandText)
+                        .lineLimit(2...4)
                     Button("Скачать с очков и подготовить") {
                         Task {
                             await media.downloadLatest()
@@ -581,6 +585,7 @@ private struct AskView: View {
 
                 Section("Russian AI agent") {
                     CompatMultilineTextField("Русская команда агенту", text: $russianAgent.userText)
+                        .lineLimit(2...6)
 
                     HStack {
                         Button("Из записи") {
@@ -643,6 +648,7 @@ private struct AskView: View {
 
                 Section("Russian command for XiaoAI") {
                     CompatMultilineTextField("Русская команда", text: $xiaoAIRussianCommand)
+                        .lineLimit(2...6)
 
                     HStack {
                         Button("Из записи") {
@@ -678,6 +684,7 @@ private struct AskView: View {
 
                 Section("Russian voice relay") {
                     CompatMultilineTextField("Русский текст для озвучки", text: $voiceRelayText)
+                        .lineLimit(3...8)
 
                     HStack {
                         Button("Вставить") {
@@ -934,6 +941,7 @@ private struct ImportLabSection: View {
                 .font(.body.monospaced())
 
             CompatMultilineTextField("Import trigger HEX candidate", text: $importTriggerHex)
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
@@ -1044,6 +1052,7 @@ private struct ImportLabSection: View {
                 }
 
                 CompatMultilineTextField("MIWBT appKey, 16 bytes hex", text: $officialReplayAppKey)
+                    .lineLimit(1...3)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
@@ -1098,6 +1107,7 @@ private struct ImportLabSection: View {
                     .foregroundStyle(.secondary)
 
                 CompatMultilineTextField("Targets", text: $autoScanTargetsText)
+                    .lineLimit(2...7)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
@@ -1658,11 +1668,13 @@ private struct SVAuthLabSection: View {
             }
 
             CompatMultilineTextField("Xiaomi tokenKey (base64 or hex)", text: $tokenKey)
+                .lineLimit(2...4)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
 
             CompatMultilineTextField("StartChannel response hex", text: $startResponseHex)
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
@@ -1979,10 +1991,13 @@ private struct WiFiImportChecklistSection: View {
                 .keyboardType(.numbersAndPunctuation)
                 .textInputAutocapitalization(.never)
             CompatMultilineTextField("Open ports", text: binding(\.openPorts))
+                .lineLimit(1...3)
                 .textInputAutocapitalization(.never)
             CompatMultilineTextField("Protocol/endpoints", text: binding(\.protocolNotes))
+                .lineLimit(2...5)
                 .textInputAutocapitalization(.never)
             CompatMultilineTextField("Capture notes", text: binding(\.captureNotes))
+                .lineLimit(2...6)
 
             HStack {
                 Button("Copy report") {
