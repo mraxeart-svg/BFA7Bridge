@@ -3,7 +3,7 @@
  *
  * This version deliberately avoids ObjC.choose(), heap scans, and stored-property
  * offset reads. It performs one filtered symbol-table pass and hooks only the
- * four exact Swift token functions.
+ * six exact Swift config functions.
  */
 
 'use strict';
@@ -13,7 +13,9 @@ const SYMBOLS = {
   init: '$s9MIWBTCore21MIWBTPeripheralConfigC5token9phoneIdenACSS_SStcfC',
   allocatingInit: '$s9MIWBTCore21MIWBTPeripheralConfigC5token9phoneIdenACSS_SStcfc',
   tokenGetter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvg',
-  tokenSetter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvs'
+  tokenSetter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvs',
+  peripheralConfig: '$s9MIWBTCore15MIWBTPeripheralC16peripheralConfigAA0bD0CyF',
+  updateConfig: '$s9MIWBTCore15MIWBTPeripheralC22updatePeripheralConfig6configyAA0bE0C_tF'
 };
 
 const installed = new Set();
@@ -108,6 +110,14 @@ function inspectStringPair(label, first, second) {
   });
 }
 
+function inspectConfig(label, config) {
+  if (!readable(config)) return;
+  const tokenField = config.add(0x10);
+  const first = safe(() => Memory.readPointer(tokenField), ptr('0'));
+  const second = safe(() => Memory.readPointer(tokenField.add(Process.pointerSize)), ptr('0'));
+  inspectStringPair(label, first, second);
+}
+
 function resolveTargets(module) {
   const wanted = new Map();
   Object.values(SYMBOLS).forEach(name => {
@@ -172,6 +182,16 @@ function install() {
   attach('token-setter', SYMBOLS.tokenSetter, {
     onEnter(args) {
       inspectStringPair('token-setter', args[0], args[1]);
+    }
+  });
+  attach('peripheral-config', SYMBOLS.peripheralConfig, {
+    onLeave(retval) {
+      inspectConfig('peripheral-config-token', retval);
+    }
+  });
+  attach('update-config', SYMBOLS.updateConfig, {
+    onEnter(args) {
+      inspectConfig('update-config-token', args[0]);
     }
   });
   log(`Installed hooks=${installed.size}; reconnect the glasses inside Xiaomi Glasses if no token appears.`);
