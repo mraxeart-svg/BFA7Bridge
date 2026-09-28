@@ -30,6 +30,12 @@ enum MIWBTAESCTR {
         return Data(output)
     }
 
+    static func encryptBlock(_ block: Data, key: Data) throws -> Data {
+        guard key.count == 16 else { throw MIWBTAESCTRError.invalidKeyLength }
+        guard block.count == 16 else { throw MIWBTAESCTRError.invalidCounterLength }
+        return Data(encryptBlock(Array(block), roundKeys: expandKey(Array(key))))
+    }
+
     private static func incrementBigEndian(_ counter: inout [UInt8]) {
         for index in stride(from: counter.count - 1, through: 0, by: -1) {
             let (value, overflow) = counter[index].addingReportingOverflow(1)
@@ -138,4 +144,124 @@ enum MIWBTAESCTR {
         0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
         0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
     ]
+}
+
+enum MIWBTAESCCMError: Error {
+    case invalidKeyLength
+    case invalidNonceLength
+    case invalidTagLength
+    case messageTooLarge
+    case authenticationFailed
+}
+
+enum MIWBTAESCCM {
+    static func seal(_ plaintext: Data, key: Data, nonce: Data, tagLength: Int = 4) throws -> Data {
+        try validate(key: key, nonce: nonce, tagLength: tagLength, messageLength: plaintext.count)
+        let q = 15 - nonce.count
+        let mac = try cbcMac(plaintext, key: key, nonce: nonce, tagLength: tagLength, q: q)
+        let s0 = try counterBlock(key: key, nonce: nonce, q: q, counter: 0)
+
+        var output = try crypt(plaintext, key: key, nonce: nonce, q: q)
+        for index in 0..<tagLength {
+            output.append(mac[index] ^ s0[index])
+        }
+        return output
+    }
+
+    static func open(_ sealed: Data, key: Data, nonce: Data, tagLength: Int = 4) throws -> Data {
+        guard sealed.count >= tagLength else { throw MIWBTAESCCMError.authenticationFailed }
+        let ciphertext = sealed.prefix(sealed.count - tagLength)
+        let suppliedTag = sealed.suffix(tagLength)
+        try validate(key: key, nonce: nonce, tagLength: tagLength, messageLength: ciphertext.count)
+
+        let q = 15 - nonce.count
+        let plaintext = try crypt(Data(ciphertext), key: key, nonce: nonce, q: q)
+        let mac = try cbcMac(plaintext, key: key, nonce: nonce, tagLength: tagLength, q: q)
+        let s0 = try counterBlock(key: key, nonce: nonce, q: q, counter: 0)
+        var expectedTag = Data()
+        for index in 0..<tagLength {
+            expectedTag.append(mac[index] ^ s0[index])
+        }
+
+        var difference: UInt8 = 0
+        for index in 0..<tagLength {
+            difference |= expectedTag[index] ^ suppliedTag[suppliedTag.index(suppliedTag.startIndex, offsetBy: index)]
+        }
+        guard difference == 0 else { throw MIWBTAESCCMError.authenticationFailed }
+        return plaintext
+    }
+
+    private static func validate(key: Data, nonce: Data, tagLength: Int, messageLength: Int) throws {
+        guard key.count == 16 else { throw MIWBTAESCCMError.invalidKeyLength }
+        guard (7...13).contains(nonce.count) else { throw MIWBTAESCCMError.invalidNonceLength }
+        guard [4, 6, 8, 10, 12, 14, 16].contains(tagLength) else {
+            throw MIWBTAESCCMError.invalidTagLength
+        }
+        let q = 15 - nonce.count
+        if q < 8 {
+            guard UInt64(messageLength) < (UInt64(1) << UInt64(8 * q)) else {
+                throw MIWBTAESCCMError.messageTooLarge
+            }
+        }
+    }
+
+    private static func cbcMac(
+        _ plaintext: Data,
+        key: Data,
+        nonce: Data,
+        tagLength: Int,
+        q: Int
+    ) throws -> Data {
+        let flags = UInt8((((tagLength - 2) / 2) << 3) | (q - 1))
+        var b0 = Data([flags])
+        b0.append(nonce)
+        b0.append(bigEndian(UInt64(plaintext.count), byteCount: q))
+
+        var state = Data(repeating: 0, count: 16)
+        var authenticated = b0
+        authenticated.append(plaintext)
+        let padding = (16 - (authenticated.count % 16)) % 16
+        authenticated.append(Data(repeating: 0, count: padding))
+
+        for offset in stride(from: 0, to: authenticated.count, by: 16) {
+            let block = authenticated.subdata(in: offset..<(offset + 16))
+            var mixed = Data(capacity: 16)
+            for index in 0..<16 {
+                mixed.append(state[index] ^ block[index])
+            }
+            state = try MIWBTAESCTR.encryptBlock(mixed, key: key)
+        }
+        return state
+    }
+
+    private static func crypt(_ input: Data, key: Data, nonce: Data, q: Int) throws -> Data {
+        var output = Data(capacity: input.count)
+        var offset = 0
+        var counter: UInt64 = 1
+        while offset < input.count {
+            let stream = try counterBlock(key: key, nonce: nonce, q: q, counter: counter)
+            let count = min(16, input.count - offset)
+            for index in 0..<count {
+                output.append(input[offset + index] ^ stream[index])
+            }
+            offset += count
+            counter += 1
+        }
+        return output
+    }
+
+    private static func counterBlock(key: Data, nonce: Data, q: Int, counter: UInt64) throws -> Data {
+        var block = Data([UInt8(q - 1)])
+        block.append(nonce)
+        block.append(bigEndian(counter, byteCount: q))
+        return try MIWBTAESCTR.encryptBlock(block, key: key)
+    }
+
+    private static func bigEndian(_ value: UInt64, byteCount: Int) -> Data {
+        var output = Data(capacity: byteCount)
+        for shift in stride(from: (byteCount - 1) * 8, through: 0, by: -8) {
+            output.append(UInt8(truncatingIfNeeded: value >> UInt64(shift)))
+        }
+        return output
+    }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var transport: ImportBLETransport
     @EnvironmentObject private var media: ImportMediaProbe
-    @State private var appKey = ""
+    @State private var pairingToken = ""
 
     var body: some View {
         NavigationView {
@@ -36,17 +36,41 @@ struct ContentView: View {
                     }
                 }
 
-                Section(header: Text("AP trigger")) {
-                    TextField("MIWBT appKey, 16 bytes hex", text: $appKey)
+                Section(header: Text("Import session")) {
+                    Text(transport.authStatus)
+
+                    SecureField(
+                        transport.hasSavedToken ? "Pairing token saved" : "Pairing token, hex",
+                        text: $pairingToken
+                    )
                         .font(.body.monospaced())
                         .autocapitalization(.allCharacters)
                         .disableAutocorrection(true)
 
-                    Button("Write AES-CTR AP trigger") {
-                        transport.writeAESCTRAPTrigger(appKeyText: appKey)
+                    Button("Authenticate and open import Wi-Fi") {
+                        transport.authenticateAndOpenWiFi(tokenText: pairingToken)
                     }
-                    .disabled(!transport.canWrite)
+                    .disabled(!transport.canAuthenticate)
                     .buttonStyle(.borderedProminent)
+
+                    if transport.canOpenWiFi {
+                        Button("Request import Wi-Fi again") {
+                            transport.openImportWiFi()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if transport.hasSavedToken {
+                        Button("Forget saved token", role: .destructive) {
+                            transport.clearSavedToken()
+                            pairingToken = ""
+                        }
+                    }
+
+                    if !transport.wifiSSID.isEmpty {
+                        Text("SSID: \(transport.wifiSSID)")
+                        Text("Gateway: \(transport.wifiGateway)")
+                    }
 
                     Text("Last write: \(transport.lastWrite)")
                         .font(.caption.monospaced())
@@ -80,6 +104,11 @@ struct ContentView: View {
             .onAppear {
                 if !transport.isScanning {
                     transport.startScan()
+                }
+            }
+            .onChange(of: transport.wifiGateway) { gateway in
+                if !gateway.isEmpty {
+                    media.host = gateway
                 }
             }
         }

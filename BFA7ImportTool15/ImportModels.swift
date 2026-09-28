@@ -12,8 +12,9 @@ struct ImportDevice: Identifiable, Equatable {
 
 extension Data {
     init?(importHexString: String) {
+        let hexadecimal = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
         let scalars = importHexString.unicodeScalars.filter { scalar in
-            CharacterSet.alphanumerics.contains(scalar)
+            hexadecimal.contains(scalar)
         }
         let compact = String(String.UnicodeScalarView(scalars))
         guard compact.count % 2 == 0 else { return nil }

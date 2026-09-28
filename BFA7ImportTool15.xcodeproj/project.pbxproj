@@ -13,6 +13,7 @@
 		BB0000000000000000000014 /* ImportBLETransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000024 /* ImportBLETransport.swift */; };
 		BB0000000000000000000015 /* ImportMediaProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000025 /* ImportMediaProbe.swift */; };
 		BB0000000000000000000016 /* MIWBTAESCTR.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000026 /* MIWBTAESCTR.swift */; };
+		BB0000000000000000000017 /* MIWBTProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000028 /* MIWBTProtocol.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,8 @@
 		BB0000000000000000000025 /* ImportMediaProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportMediaProbe.swift; sourceTree = "<group>"; };
 		BB0000000000000000000026 /* MIWBTAESCTR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIWBTAESCTR.swift; sourceTree = "<group>"; };
 		BB0000000000000000000027 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB0000000000000000000028 /* MIWBTProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIWBTProtocol.swift; sourceTree = "<group>"; };
+		BB0000000000000000000029 /* BFA7ImportTool15.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BFA7ImportTool15.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +57,8 @@
 				BB0000000000000000000024 /* ImportBLETransport.swift */,
 				BB0000000000000000000025 /* ImportMediaProbe.swift */,
 				BB0000000000000000000026 /* MIWBTAESCTR.swift */,
+				BB0000000000000000000028 /* MIWBTProtocol.swift */,
+				BB0000000000000000000029 /* BFA7ImportTool15.entitlements */,
 				BB0000000000000000000027 /* Info.plist */,
 			);
 			path = BFA7ImportTool15;
@@ -135,6 +140,7 @@
 				BB0000000000000000000014 /* ImportBLETransport.swift in Sources */,
 				BB0000000000000000000015 /* ImportMediaProbe.swift in Sources */,
 				BB0000000000000000000016 /* MIWBTAESCTR.swift in Sources */,
+				BB0000000000000000000017 /* MIWBTProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +152,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = BFA7ImportTool15/BFA7ImportTool15.entitlements;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
 				INFOPLIST_FILE = BFA7ImportTool15/Info.plist;
@@ -164,6 +171,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = BFA7ImportTool15/BFA7ImportTool15.entitlements;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
 				INFOPLIST_FILE = BFA7ImportTool15/Info.plist;
