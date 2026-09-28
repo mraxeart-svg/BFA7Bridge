@@ -1,9 +1,9 @@
 /*
  * Minimal MIWear pairing-token probe for Xiaomi Glasses on iOS.
  *
- * This version deliberately avoids Module.enumerateSymbolsSync(), ObjC.choose(),
- * heap scans, and stored-property offset reads. Those operations are unstable in
- * the App Store build on iOS 15. It resolves and hooks only the Swift token API.
+ * This version deliberately avoids ObjC.choose(), heap scans, and stored-property
+ * offset reads. It performs one filtered symbol-table pass and hooks only the
+ * four exact Swift token functions.
  */
 
 'use strict';
@@ -18,6 +18,7 @@ const SYMBOLS = {
 
 const installed = new Set();
 const emitted = new Set();
+const resolved = new Map();
 
 function now() { return new Date().toISOString(); }
 function log(message) { console.log(`[${PREFIX} ${now()}] ${message}`); }
@@ -107,10 +108,25 @@ function inspectStringPair(label, first, second) {
   });
 }
 
+function resolveTargets(module) {
+  const wanted = new Map();
+  Object.values(SYMBOLS).forEach(name => {
+    wanted.set(name, name);
+    wanted.set(`_${name}`, name);
+  });
+
+  const symbols = safe(() => Module.enumerateSymbolsSync(module.name), []);
+  symbols.forEach(symbol => {
+    const canonical = wanted.get(symbol.name);
+    if (canonical && !resolved.has(canonical)) resolved.set(canonical, symbol.address);
+  });
+  log(`TARGET-SCAN symbols=${symbols.length} matched=${resolved.size}`);
+}
+
 function resolve(name) {
-  for (const candidate of [name, `_${name}`]) {
-    const symbol = safe(() => DebugSymbol.fromName(candidate), null);
-    if (symbol && symbol.address && !symbol.address.isNull()) return symbol.address;
+  const address = resolved.get(name);
+  if (address && !address.isNull()) {
+    return address;
   }
   return null;
 }
@@ -137,6 +153,7 @@ function install() {
   }
 
   log(`Installing narrow hooks in MIWBTCore base=${module.base}`);
+  resolveTargets(module);
   attach('config-init', SYMBOLS.init, {
     onEnter(args) {
       inspectStringPair('init-token', args[0], args[1]);
