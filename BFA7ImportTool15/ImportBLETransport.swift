@@ -39,9 +39,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     private var token: Data?
     private var appRandom: Data?
     private var sessionKeys: MIWSessionKeys?
-    private var appCounter: UInt32 = 0
-    private var deviceCounter: UInt32 = 0
-    private var legacyRequestTask: Task<Void, Never>?
+    private var importRequestTask: Task<Void, Never>?
 
     private let fe95Service = CBUUID(string: "FE95")
     private let writeUUID = CBUUID(string: "005F")
@@ -95,7 +93,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     func disconnect() {
-        legacyRequestTask?.cancel()
+        importRequestTask?.cancel()
         if let connected { central.cancelPeripheralConnection(connected) }
     }
 
@@ -150,16 +148,14 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     private func resetSession(keepStatus: Bool) {
-        legacyRequestTask?.cancel()
-        legacyRequestTask = nil
+        importRequestTask?.cancel()
+        importRequestTask = nil
         receiveBuffer.removeAll(keepingCapacity: true)
         txSequence = 0
         stage = .idle
         token = nil
         appRandom = nil
         sessionKeys = nil
-        appCounter = 0
-        deviceCounter = 0
         wifiSSID = ""
         wifiPassword = ""
         if !keepStatus { authStatus = "Connect the glasses" }
@@ -220,10 +216,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
                     throw MIWProtocolError.deviceRejectedAuthentication
                 }
                 stage = .authenticated
-                appCounter = 0
-                deviceCounter = 0
                 authStatus = "Authenticated"
-                appendLog("MIWear authentication complete")
+                appendLog("MIWear authentication complete; iOS AES-CTR session ready")
                 requestCurrentWiFiAP()
 
             default:
@@ -239,26 +233,26 @@ final class ImportBLETransport: NSObject, ObservableObject {
         stage = .waitingForWiFi
         authStatus = "Requesting import Wi-Fi"
         do {
-            try sendEncrypted(MIWProtocol.currentWiFiAPRequest())
-            appendLog("Sent System.ENABLE_WIFI_AP (id 88)")
+            try sendEncrypted(MIWProtocol.iOSImportReadyPacket())
+            appendLog("Sent Xiaomi iOS import-ready packet")
         } catch {
             fail(error)
             return
         }
 
-        legacyRequestTask?.cancel()
-        legacyRequestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        importRequestTask?.cancel()
+        importRequestTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            await self?.sendLegacyWiFiFallbackIfNeeded()
+            await self?.sendIOSWiFiRequestIfNeeded()
         }
     }
 
-    private func sendLegacyWiFiFallbackIfNeeded() {
+    private func sendIOSWiFiRequestIfNeeded() {
         guard wifiSSID.isEmpty, stage == .waitingForWiFi else { return }
         do {
-            try sendEncrypted(MIWProtocol.legacyIOSWiFiAPRequest())
-            appendLog("No AP result yet; sent Xiaomi iOS 3.3.0 Wi-Fi fallback")
+            try sendEncrypted(MIWProtocol.iOSWiFiAPRequest())
+            appendLog("Sent Xiaomi iOS wifiApRequest frequency=1")
         } catch {
             fail(error)
         }
@@ -268,10 +262,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
         guard let keys = sessionKeys else {
             throw MIWProtocolError.malformedPacket("session keys are unavailable")
         }
-        appCounter &+= 1
-        let encrypted = try MIWProtocol.sealSessionPacket(packet, keys: keys, counter: appCounter)
+        let encrypted = try MIWProtocol.sealSessionPacket(packet, keys: keys)
         sendL2(channel: 1, opcode: 2, payload: encrypted)
-        appendLog("Encrypted \(MIWProtocol.packetSummary(packet)), counter=\(appCounter)")
+        appendLog("CTR encrypted \(MIWProtocol.packetSummary(packet))")
     }
 
     private func handleL2(_ payload: Data) {
@@ -297,14 +290,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
         }
 
         do {
-            let opened = try MIWProtocol.openSessionPacket(
-                body,
-                keys: keys,
-                previousCounter: deviceCounter
-            )
-            deviceCounter = opened.counter
-            appendLog("Decrypted \(MIWProtocol.packetSummary(opened.packet)), counter=\(opened.counter)")
-            if let credentials = MIWProtocol.parseWiFiCredentials(opened.packet) {
+            let opened = try MIWProtocol.openSessionPacket(body, keys: keys)
+            appendLog("CTR decrypted \(MIWProtocol.packetSummary(opened))")
+            if let credentials = MIWProtocol.parseWiFiCredentials(opened) {
                 acceptWiFiCredentials(credentials)
             }
         } catch {
@@ -313,7 +301,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     private func acceptWiFiCredentials(_ credentials: MIWWiFiCredentials) {
-        legacyRequestTask?.cancel()
+        importRequestTask?.cancel()
         wifiSSID = credentials.ssid
         wifiPassword = credentials.password
         wifiGateway = credentials.gateway.isEmpty ? "192.168.43.1" : credentials.gateway

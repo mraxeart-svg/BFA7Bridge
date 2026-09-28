@@ -16,6 +16,24 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.4.app
 
+      - name: Verify AES-CTR implementation
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/main.swift" <<'SWIFT'
+          import Foundation
+
+          let key = Data([0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c])
+          let counter = Data([0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff])
+          let plaintext = Data([0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a])
+          let expected = Data([0x87, 0x4d, 0x61, 0x91, 0xb6, 0x20, 0xe3, 0x26, 0x1b, 0xef, 0x68, 0x64, 0x99, 0x0d, 0xb6, 0xce])
+          let encrypted = try MIWBTAESCTR.encrypt(plaintext, key: key, initialCounter: counter)
+          guard encrypted == expected else { fatalError("AES-CTR NIST vector mismatch") }
+          let decrypted = try MIWBTAESCTR.encrypt(encrypted, key: key, initialCounter: counter)
+          guard decrypted == plaintext else { fatalError("AES-CTR round trip mismatch") }
+          SWIFT
+          xcrun swiftc BFA7ImportTool15/MIWBTAESCTR.swift "$RUNNER_TEMP/main.swift" -o "$RUNNER_TEMP/aes-ctr-test"
+          "$RUNNER_TEMP/aes-ctr-test"
+
       - name: Build app
         run: |
           set -euo pipefail

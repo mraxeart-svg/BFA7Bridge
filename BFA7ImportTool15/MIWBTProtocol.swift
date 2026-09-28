@@ -162,66 +162,33 @@ enum MIWProtocol {
         return result != 0
     }
 
-    static func currentWiFiAPRequest() -> Data {
-        // SystemProtos.System.wifiAp (57) with an empty WiFiAP message.
-        let wifiAP = stringField(1, "")
-        let system = messageField(57, wifiAP)
-        return wearPacket(type: 2, id: 88, payloadField: 4, payload: system)
+    static func iOSImportReadyPacket() -> Data {
+        // Exact plaintext emitted immediately before wifiApRequest by Xiaomi Glasses 3.3.0.
+        Data([0x08, 0x0D, 0x10, 0x06])
     }
 
-    static func legacyIOSWiFiAPRequest() -> Data {
-        // MIWearPB schema shipped in Xiaomi Glasses 3.3.0 for iOS.
-        Data([
+    static func iOSWiFiAPRequest(frequency: UInt8 = 1) -> Data {
+        // Exact MIWearPB schema shipped in Xiaomi Glasses 3.3.0 for iOS.
+        var packet = Data([
             0x08, 0x0E, 0x10, 0x05, 0x82, 0x01, 0x0E, 0x2A, 0x0C, 0x08, 0x00,
-            0x10, 0x00, 0x18, 0x00, 0x20, 0x00, 0x28, 0x00, 0x30, 0x01
+            0x10, 0x00, 0x18, 0x00, 0x20, 0x00, 0x28, 0x00, 0x30, 0x00
         ])
+        packet[packet.count - 1] = frequency
+        return packet
     }
 
-    static func sessionNonce(iv: Data, counter: UInt32) -> Data {
-        var nonce = Data(iv.prefix(4))
-        nonce.append(Data(repeating: 0, count: 4))
-        nonce.append(UInt8(counter & 0xFF))
-        nonce.append(UInt8((counter >> 8) & 0xFF))
-        nonce.append(UInt8((counter >> 16) & 0xFF))
-        nonce.append(UInt8((counter >> 24) & 0xFF))
-        return nonce
+    static func sealSessionPacket(_ packet: Data, keys: MIWSessionKeys) throws -> Data {
+        // MIWFlowEncrypt initializes CryptoSwift CTR with appKey as both the AES key
+        // and the 16-byte initial counter block. The separate appIV is unused here.
+        try MIWBTAESCTR.encrypt(packet, key: keys.appKey, initialCounter: keys.appKey)
     }
 
-    static func sealSessionPacket(_ packet: Data, keys: MIWSessionKeys, counter: UInt32) throws -> Data {
-        let encrypted = try MIWBTAESCCM.seal(
-            packet,
-            key: keys.appKey,
-            nonce: sessionNonce(iv: keys.appIV, counter: counter),
-            tagLength: 4
-        )
-        var output = Data([
-            UInt8(counter & 0xFF),
-            UInt8((counter >> 8) & 0xFF)
-        ])
-        output.append(encrypted)
-        return output
-    }
-
-    static func openSessionPacket(
-        _ payload: Data,
-        keys: MIWSessionKeys,
-        previousCounter: UInt32
-    ) throws -> (packet: Data, counter: UInt32) {
-        guard payload.count >= 7 else {
-            throw MIWProtocolError.malformedPacket("encrypted session payload is too short")
+    static func openSessionPacket(_ payload: Data, keys: MIWSessionKeys) throws -> Data {
+        guard !payload.isEmpty else {
+            throw MIWProtocolError.malformedPacket("encrypted session payload is empty")
         }
-        let low = UInt32(payload[0]) | (UInt32(payload[1]) << 8)
-        var counter = (previousCounter & 0xFFFF0000) | low
-        if low < (previousCounter & 0xFFFF), previousCounter - counter > 0x8000 {
-            counter &+= 0x10000
-        }
-        let packet = try MIWBTAESCCM.open(
-            Data(payload.dropFirst(2)),
-            key: keys.deviceKey,
-            nonce: sessionNonce(iv: keys.deviceIV, counter: counter),
-            tagLength: 4
-        )
-        return (packet, counter)
+        // Incoming packets use the matching device key as key and initial counter.
+        return try MIWBTAESCTR.encrypt(payload, key: keys.deviceKey, initialCounter: keys.deviceKey)
     }
 
     static func parseWiFiCredentials(_ packet: Data) -> MIWWiFiCredentials? {
