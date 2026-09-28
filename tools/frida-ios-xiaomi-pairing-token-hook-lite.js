@@ -21,6 +21,8 @@ const SYMBOLS = {
 const installed = new Set();
 const emitted = new Set();
 const resolved = new Map();
+let tokenGetterCall = null;
+let requestedGetterLabel = null;
 
 function now() { return new Date().toISOString(); }
 function log(message) { console.log(`[${PREFIX} ${now()}] ${message}`); }
@@ -44,6 +46,18 @@ function wordBytes(word) {
   return bytes;
 }
 
+function bytesText(bytes, count) {
+  const length = Math.min(count === undefined ? bytes.length : count, bytes.length);
+  let text = '';
+  for (let index = 0; index < length; index += 1) {
+    const value = bytes[index];
+    if (value === 0) break;
+    if (value < 0x20 || value > 0x7e) return null;
+    text += String.fromCharCode(value);
+  }
+  return text.length > 0 ? text : null;
+}
+
 function cleanString(value) {
   if (!value) return null;
   const nul = value.indexOf('\0');
@@ -56,36 +70,54 @@ function cleanString(value) {
   return text;
 }
 
-function addPointerStrings(value, output) {
-  if (!readable(value)) return;
-  const direct = cleanString(safe(() => Memory.readUtf8String(value, 256), null));
-  if (direct && output.indexOf(direct) < 0) output.push(direct);
-  if (!ObjC.available) return;
-  const objc = cleanString(safe(() => new ObjC.Object(value).toString(), null));
-  if (objc && output.indexOf(objc) < 0) output.push(objc);
+function pointerVariants(value) {
+  const variants = [];
+  const masks = [
+    '0x0000ffffffffffff',
+    '0x00ffffffffffffff',
+    '0x0fffffffffffffff',
+    '0x7fffffffffffffff'
+  ];
+  function add(candidate) {
+    if (!candidate || candidate.isNull() || !readable(candidate)) return;
+    if (!variants.some(existing => existing.equals(candidate))) variants.push(candidate);
+  }
+  add(value);
+  masks.forEach(mask => add(safe(() => value.and(ptr(mask)), ptr('0'))));
+  return variants;
+}
+
+function stringsNearPointer(value) {
+  const found = [];
+  function add(text) {
+    const clean = cleanString(text);
+    if (clean && found.indexOf(clean) < 0) found.push(clean);
+  }
+  pointerVariants(value).forEach(base => {
+    for (let offset = 0; offset <= 96; offset += Process.pointerSize) {
+      add(safe(() => Memory.readUtf8String(base.add(offset), 256), null));
+      const indirect = safe(() => Memory.readPointer(base.add(offset)), ptr('0'));
+      pointerVariants(indirect).forEach(pointer => {
+        add(safe(() => Memory.readUtf8String(pointer, 256), null));
+      });
+    }
+  });
+  return found;
 }
 
 function decodeSwiftString(first, second) {
-  const output = [];
+  const found = [];
+  function add(text) {
+    const clean = cleanString(text);
+    if (clean && found.indexOf(clean) < 0) found.push(clean);
+  }
   const inline = wordBytes(first).concat(wordBytes(second));
   const discriminator = inline[15];
-  const inlineLength = (discriminator & 0xf0) === 0xe0 ? discriminator & 0x0f : 15;
-  let inlineText = '';
-  for (let index = 0; index < inlineLength; index += 1) {
-    const value = inline[index];
-    if (value === 0) break;
-    if (value < 0x20 || value > 0x7e) {
-      inlineText = '';
-      break;
-    }
-    inlineText += String.fromCharCode(value);
-  }
-  const cleanInline = cleanString(inlineText);
-  if (cleanInline) output.push(cleanInline);
-
-  addPointerStrings(second, output);
-  addPointerStrings(first, output);
-  return output;
+  if ((discriminator & 0xf0) === 0xe0) add(bytesText(inline, discriminator & 0x0f));
+  add(bytesText(inline, 15));
+  stringsNearPointer(second).forEach(add);
+  stringsNearPointer(first).forEach(add);
+  return found;
 }
 
 function compactHex(text) {
@@ -110,12 +142,21 @@ function inspectStringPair(label, first, second) {
   });
 }
 
+function invokeTokenGetter(label, config) {
+  if (!tokenGetterCall || !readable(config)) return;
+  requestedGetterLabel = label;
+  const result = safe(() => tokenGetterCall(config), null);
+  requestedGetterLabel = null;
+  if (result === null) log(`${label} getter-call failed`);
+}
+
 function inspectConfig(label, config) {
   if (!readable(config)) return;
   const tokenField = config.add(0x10);
   const first = safe(() => Memory.readPointer(tokenField), ptr('0'));
   const second = safe(() => Memory.readPointer(tokenField.add(Process.pointerSize)), ptr('0'));
   inspectStringPair(label, first, second);
+  invokeTokenGetter(`${label}-getter`, config);
 }
 
 function scanExistingConfigs(reason) {
@@ -190,6 +231,10 @@ function install() {
 
   log(`Installing narrow hooks in MIWBTCore base=${module.base}`);
   resolveTargets(module);
+  const getterAddress = resolve(SYMBOLS.tokenGetter);
+  if (getterAddress) {
+    tokenGetterCall = new NativeFunction(getterAddress, 'pointer', ['pointer']);
+  }
   attach('config-init', SYMBOLS.init, {
     onEnter(args) {
       inspectStringPair('init-token', args[0], args[1]);
@@ -201,8 +246,11 @@ function install() {
     }
   });
   attach('token-getter', SYMBOLS.tokenGetter, {
+    onEnter() {
+      this.label = requestedGetterLabel || 'token-getter';
+    },
     onLeave(retval) {
-      inspectStringPair('token-getter', retval, this.context.x1);
+      inspectStringPair(this.label, retval, this.context.x1);
     }
   });
   attach('token-setter', SYMBOLS.tokenSetter, {
