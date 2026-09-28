@@ -118,6 +118,30 @@ function inspectConfig(label, config) {
   inspectStringPair(label, first, second);
 }
 
+function scanExistingConfigs(reason) {
+  if (!ObjC.available) {
+    log(`CONFIG-SCAN reason=${reason} ObjC unavailable`);
+    return;
+  }
+  const classNames = Object.keys(ObjC.classes).filter(name =>
+    name === '_TtC9MIWBTCore21MIWBTPeripheralConfig' ||
+    name.indexOf('MIWBTPeripheralConfig') >= 0
+  );
+  log(`CONFIG-SCAN reason=${reason} classes=${classNames.join(',') || '<none>'}`);
+  classNames.forEach(className => {
+    let count = 0;
+    safe(() => ObjC.choose(ObjC.classes[className], {
+      onMatch(instance) {
+        count += 1;
+        inspectConfig(`existing-config-token-${count}`, instance.handle);
+      },
+      onComplete() {
+        log(`CONFIG-SCAN class=${className} instances=${count}`);
+      }
+    }), null);
+  });
+}
+
 function resolveTargets(module) {
   const wanted = new Map();
   Object.values(SYMBOLS).forEach(name => {
@@ -195,11 +219,16 @@ function install() {
     }
   });
   log(`Installed hooks=${installed.size}; reconnect the glasses inside Xiaomi Glasses if no token appears.`);
+  setTimeout(() => scanExistingConfigs('startup'), 250);
 }
 
 setImmediate(install);
 
 rpc.exports = {
+  scan() {
+    scanExistingConfigs('rpc');
+    return 'scan requested';
+  },
   status() {
     return JSON.stringify({ hooks: installed.size, candidates: emitted.size });
   }
