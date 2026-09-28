@@ -123,10 +123,12 @@ function scanExistingConfigs(reason) {
     log(`CONFIG-SCAN reason=${reason} ObjC unavailable`);
     return;
   }
-  const classNames = Object.keys(ObjC.classes).filter(name =>
-    name === '_TtC9MIWBTCore21MIWBTPeripheralConfig' ||
-    name.indexOf('MIWBTPeripheralConfig') >= 0
-  );
+  const candidates = [
+    '_TtC9MIWBTCore21MIWBTPeripheralConfig',
+    'MIWBTCore.MIWBTPeripheralConfig',
+    'MIWBTPeripheralConfig'
+  ];
+  const classNames = candidates.filter(name => !!ObjC.classes[name]);
   log(`CONFIG-SCAN reason=${reason} classes=${classNames.join(',') || '<none>'}`);
   classNames.forEach(className => {
     let count = 0;
