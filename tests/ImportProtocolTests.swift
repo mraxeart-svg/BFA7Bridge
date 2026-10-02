@@ -9,7 +9,34 @@ enum ImportProtocolTests {
     }
 
     static func main() throws {
+        let record = """
+        {"model":"miwear.phovideo.o95cn","name":"Test glasses","detail":{
+        "encrypt_key":"000102030405060708090a0b0c0d0e0f","token":"ffffffffffffffffffffffffffffffff"}}
+        """
+        let selected = try MIWPairingRecord.decode(Data(record.utf8))
+        precondition(selected.key == Data(0..<16))
+        let wrapped = "{\"code\":0,\"data\":{\"list\":[\(record)]}}"
+        let cloudKey = try MIWPairingRecord.decode(Data(wrapped.utf8)).key
+        precondition(cloudKey == Data(0..<16))
+        for invalid in [
+            record.replacingOccurrences(of: "encrypt_key", with: "sessionKey"),
+            record.replacingOccurrences(of: "o95cn", with: "band"),
+            record.replacingOccurrences(of: "000102030405060708090a0b0c0d0e0f", with: "bad-key"),
+            wrapped.replacingOccurrences(of: "\"code\":0", with: "\"code\":1"),
+            "{\"list\":[\(record),\(record)]}", "null", "[]"
+        ] {
+            do {
+                _ = try MIWPairingRecord.decode(Data(invalid.utf8))
+                fatalError("Invalid or ambiguous device record accepted")
+            } catch MIWPairingRecord.RecordError.invalid {}
+        }
         precondition(MIWProtocol.iOSWiFiAPRequest() == hex("08 02 10 58"))
+        precondition(MIWProtocol.buildAppVerify(appRandom: Data(0..<16)) ==
+                     hex("08 01 10 1A 1A 15 F2 01 12 0A 10") + Data(0..<16))
+        do {
+            _ = try MIWProtocol.parseDeviceVerify(hex("08 01 10 1A 1A 02 18 04"))
+            fatalError("Unbound device accepted")
+        } catch MIWProtocolError.accountError(let code) { precondition(code == 4) }
         precondition(Data(importHexString: "token=ab12") == nil)
         precondition(Data(importHexString: "AB 12\nCD") == hex("AB12CD"))
 

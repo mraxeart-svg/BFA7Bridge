@@ -1,9 +1,13 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var transport: ImportBLETransport
     @EnvironmentObject private var media: ImportMediaProbe
     @State private var pairingToken = ""
+    @State private var showingCredentialPicker = false
+    @State private var credentialName = ""
+    @State private var credentialError = false
 
     var body: some View {
         NavigationView {
@@ -41,11 +45,21 @@ struct ContentView: View {
 
                     SecureField(
                         transport.hasSavedToken ? "Pairing token saved" : "Pairing token, hex",
-                        text: $pairingToken
+                        text: Binding(get: { pairingToken }, set: {
+                            pairingToken = $0
+                            credentialName = ""
+                        })
                     )
                         .font(.body.monospaced())
                         .autocapitalization(.allCharacters)
                         .disableAutocorrection(true)
+
+                    Button {
+                        showingCredentialPicker = true
+                    } label: {
+                        Label("Load device record", systemImage: "doc.badge.plus")
+                    }
+                    if !credentialName.isEmpty { Text("Credential: \(credentialName)") }
 
                     Button("Authenticate and open import Wi-Fi") {
                         transport.authenticateAndOpenWiFi(tokenText: pairingToken)
@@ -64,6 +78,7 @@ struct ContentView: View {
                         Button("Forget saved token", role: .destructive) {
                             transport.clearSavedToken()
                             pairingToken = ""
+                            credentialName = ""
                         }
                     }
 
@@ -101,6 +116,26 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("BFA7 Import 15")
+            .fileImporter(isPresented: $showingCredentialPicker, allowedContentTypes: [.json]) { result in
+                guard case .success(let url) = result else { return }
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let file = try FileHandle(forReadingFrom: url)
+                    defer { try? file.close() }
+                    let data = try file.read(upToCount: 1_048_577) ?? Data()
+                    let record = try MIWPairingRecord.decode(data)
+                    pairingToken = record.key.importHexString
+                    credentialName = record.name
+                } catch {
+                    credentialError = true
+                }
+            }
+            .alert("Credential not loaded", isPresented: $credentialError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(MIWPairingRecord.RecordError.invalid.localizedDescription)
+            }
             .onAppear {
                 if !transport.isScanning {
                     transport.startScan()

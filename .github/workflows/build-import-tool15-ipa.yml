@@ -51,7 +51,9 @@ jobs:
       - name: Verify import protocol
         run: |
           set -euo pipefail
-          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 -m venv "$RUNNER_TEMP/import-analysis"
+          "$RUNNER_TEMP/import-analysis/bin/python" -m pip install -r tools/requirements-import-analysis.txt
+          "$RUNNER_TEMP/import-analysis/bin/python" -m unittest discover -s tests -p 'test_*.py'
           node tests/token_reader.test.js
           xcrun swiftc BFA7ImportTool15/ImportModels.swift BFA7ImportTool15/MIWBTAESCTR.swift BFA7ImportTool15/MIWBTProtocol.swift tests/ImportProtocolTests.swift -o "$RUNNER_TEMP/import-protocol-tests"
           "$RUNNER_TEMP/import-protocol-tests"

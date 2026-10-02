@@ -10,6 +10,56 @@ struct ImportDevice: Identifiable, Equatable {
     }
 }
 
+struct MIWPairingRecord {
+    let name: String
+    let key: Data
+
+    enum RecordError: LocalizedError {
+        case invalid
+        var errorDescription: String? {
+            "Expected one O95 device record with a 16-byte detail.encrypt_key"
+        }
+    }
+
+    private struct DeviceRecord: Decodable {
+        let model: String
+        let name: String?
+        let detail: Detail?
+        struct Detail: Decodable { let encrypt_key: String? }
+    }
+
+    private struct SourceList: Decodable { let list: [DeviceRecord] }
+    private struct Response: Decodable { let code: Int; let data: SourceList }
+
+    static func decode(_ data: Data) throws -> MIWPairingRecord {
+        guard data.count <= 1_048_576 else { throw RecordError.invalid }
+        let decoder = JSONDecoder()
+        // Choose the top-level format explicitly; failed responses must not fall
+        // through to a record parser and accidentally accept embedded credentials.
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RecordError.invalid
+        }
+        let records: [DeviceRecord]
+        if object["code"] != nil {
+            guard let response = try? decoder.decode(Response.self, from: data), response.code == 0 else {
+                throw RecordError.invalid
+            }
+            records = response.data.list
+        } else if object["list"] != nil {
+            guard let list = try? decoder.decode(SourceList.self, from: data) else { throw RecordError.invalid }
+            records = list.list
+        } else {
+            guard let record = try? decoder.decode(DeviceRecord.self, from: data) else { throw RecordError.invalid }
+            records = [record]
+        }
+        let candidates = records.filter { $0.model == "miwear.phovideo.o95cn" }
+        guard candidates.count == 1, let candidate = candidates.first,
+              let hex = candidate.detail?.encrypt_key, hex.utf8.count == 32,
+              let key = Data(importHexString: hex), key.count == 16 else { throw RecordError.invalid }
+        return MIWPairingRecord(name: candidate.name ?? "Xiaomi AI Glasses", key: key)
+    }
+}
+
 extension Data {
     init?(importHexString: String) {
         let hexadecimal = CharacterSet(charactersIn: "0123456789abcdefABCDEF")

@@ -21,6 +21,7 @@ enum MIWProtocolError: LocalizedError {
     case malformedPacket(String)
     case deviceSignatureMismatch
     case deviceRejectedAuthentication
+    case accountError(UInt64)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ enum MIWProtocolError: LocalizedError {
             return "Device signature mismatch; token or authentication protocol is incorrect"
         case .deviceRejectedAuthentication:
             return "The glasses did not confirm authentication"
+        case .accountError(let code):
+            return code == 4 ? "The glasses report that they are not bound" : "MIWear account error \(code)"
         }
     }
 }
@@ -81,7 +84,7 @@ enum MIWProtocol {
         )
     }
 
-    static func buildAppVerify(appRandom: Data, appDeviceID: String) -> Data {
+    static func buildAppVerify(appRandom: Data, appDeviceID: String = "") -> Data {
         var verify = bytesField(1, appRandom)
         if !appDeviceID.isEmpty {
             verify.append(stringField(2, appDeviceID))
@@ -98,6 +101,9 @@ enum MIWProtocol {
         }
         guard let account = fields(in: packet).first(where: { $0.number == 3 })?.bytes else {
             throw MIWProtocolError.malformedPacket("missing account payload")
+        }
+        if let code = fields(in: account).first(where: { $0.number == 3 })?.integer {
+            throw MIWProtocolError.accountError(code)
         }
         guard let verify = fields(in: account).first(where: { $0.number == 31 })?.bytes else {
             throw MIWProtocolError.malformedPacket("missing DeviceVerify")
@@ -353,26 +359,29 @@ enum MIWProtocol {
 
 enum MIWTokenVault {
     private static let service = "com.mraxeart.BFA7ImportTool15"
-    private static let account = "miwear-pairing-token"
+    private static func account(_ deviceID: UUID) -> String {
+        "miwear-pairing-token.\(deviceID.uuidString)"
+    }
 
-    static func save(_ token: Data) {
+    static func save(_ token: Data, for deviceID: UUID) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account(deviceID)
         ]
-        SecItemDelete(query as CFDictionary)
+        let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: token] as CFDictionary)
+        guard updated == errSecItemNotFound else { return }
         var item = query
         item[kSecValueData as String] = token
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(item as CFDictionary, nil)
     }
 
-    static func load() -> Data? {
+    static func load(for deviceID: UUID) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account(deviceID),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -381,11 +390,11 @@ enum MIWTokenVault {
         return result as? Data
     }
 
-    static func clear() {
+    static func clear(for deviceID: UUID) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account(deviceID)
         ]
         SecItemDelete(query as CFDictionary)
     }

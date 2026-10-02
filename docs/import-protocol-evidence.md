@@ -74,6 +74,79 @@ signature validates it. Heap-reader tests cannot prove device compatibility.
 
 ## Required Independent Flow
 
+### Credential Source: New Static Evidence
+
+The APK's `classes6.dex`, SHA-256
+`c5f97dc73f368ad6c8159083f33fbff62173752d702b704ade06a3692ebc2050`,
+contains `com.xiaomi.fit.device.extensions.DeviceModelExtKt.convert`
+with a `MiWearSourceDevice` argument. Its DEX instructions explicitly call
+`getDetail().getEncrypt_key()` and pass the result to
+`com.xiaomi.wearable.core.DeviceInfo.setToken`. This was checked in bytecode,
+not inferred from the similar field names in a decompiler listing.
+
+`classes9.dex`, SHA-256
+`282d0890e833fb4e29407453a93dea1df50df688e2ba8c20378ae438bf378bbc`,
+contains the continuation:
+
+- `MiWearDeviceDetail` has SEPARATE `encrypt_key` and `token` properties.
+- `BleConnection.getToken()` decodes `DeviceInfo.token` as hexadecimal via
+  `ByteUtil.stringToBytes`, then passes those bytes into authentication.
+- `WearAuthV2.verify()` uses that key as HKDF input, with the two nonces as
+  salt and `miwear-auth` as info.
+- The cloud-record converter does not set `appDeviceId`. `WearAuthV2` only
+  emits that field when provided. ImportTool15 no longer invents a vendor
+  UUID for this identity. Local/OOB authentication is not implemented.
+
+The other `convert(WearableDeviceInfo)` overload branches on device type:
+Huami uses `authKey`, local devices use `token`, and other devices use
+`encryptKey`. Do NOT generalize one branch to all Xiaomi products.
+
+This identifies the key source in the APK's cloud-record path. It does NOT
+prove that a public account API will return this owner's O95 record, that
+this path was taken in an iOS capture, or that ID26/27 has passed on hardware.
+The selected record still needs a device HMAC check. No real persistent key
+has been recovered or verified in this iteration.
+
+ImportTool15 can now load a JSON source record (or `list` / `code,data,list`
+envelope) using the Files picker. It accepts exactly one
+`miwear.phovideo.o95cn` record and a 16-byte `detail.encrypt_key`, with no
+fallback to token, appKey or deviceKey. It never logs the credential. Loading
+a record does not authenticate or write to Bluetooth. Validated keys are
+stored by CoreBluetooth peripheral UUID, not shared between devices. Old
+unscoped Keychain entries are intentionally not automatically migrated,
+because their device identity is unknown.
+
+The offline verifier is an additional check, not a token extractor:
+
+```sh
+python3 -m pip install -r tools/requirements-import-analysis.txt
+python3 tools/verify_miwear_auth.py capture.txt --record private-device-record.json
+```
+
+For several O95 entries select one with `--device-id <sid>`. Keep the JSON
+private and out of source control. No account password is required by this
+tool; it has no network access. It verifies both HMACs, the companion CCM
+tag, and a subsequent successful DeviceConfirm. It reassembles split A5
+frames and checks CRCs. Reports contain statuses and line numbers, not keys,
+nonces, device IDs or decrypted companion information. Missing data returns
+unverified, not success. Dynamic-code/OOB mode is explicitly unsupported.
+
+Running the parser on the original binding capture found IDs 16/17/18/19/25
+and zero token-auth attempts. The AP capture likewise contained no complete
+AUTH26/27 attempt. Synthetic successful/negative tests are not hardware
+proof and are clearly separated from these results.
+
+Related public implementations checked:
+[Gadgetbridge auth](https://github.com/Freeyourgadget/Gadgetbridge/blob/master/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/service/devices/xiaomi/XiaomiAuthService.java)
+independently uses the same nonce/HKDF/HMAC structure for supported Xiaomi
+wearables. [huami-token](https://github.com/argrento/huami-token/blob/master/huami_token/xiaomi.py)
+implements Xiaomi account login with SID `miothealth` and a health source-list
+endpoint. Neither is proof of an O95 account retrieval contract. Do not
+present a watch-cloud login as a verified glasses solution. No code from
+these projects was copied into the app.
+
+### Runtime Sequence
+
 1. Obtain/provision this device's persistent pairing material. Offline first
    binding is not established; this is distinct from removing Xiaomi from
    everyday imports.

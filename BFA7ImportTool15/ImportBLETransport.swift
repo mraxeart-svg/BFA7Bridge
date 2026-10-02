@@ -52,7 +52,6 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        hasSavedToken = MIWTokenVault.load() != nil
         central = CBCentralManager(delegate: self, queue: nil)
     }
 
@@ -99,6 +98,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         connectedName = "connecting \(device.name)"
         authStatus = "Connecting"
         connected = peripheral
+        hasSavedToken = MIWTokenVault.load(for: peripheral.identifier) != nil
         peripheral.delegate = self
         central.connect(peripheral, options: nil)
         appendLog("Connecting to \(device.name)")
@@ -111,7 +111,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     func authenticateAndOpenWiFi(tokenText: String) {
-        guard canAuthenticate else {
+        guard canAuthenticate, let deviceID = connected?.identifier else {
             authStatus = "FE95/005E and 005F are not ready"
             appendLog(authStatus)
             return
@@ -120,7 +120,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         let trimmed = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
         let selectedToken: Data?
         if trimmed.isEmpty {
-            selectedToken = MIWTokenVault.load()
+            selectedToken = MIWTokenVault.load(for: deviceID)
         } else {
             selectedToken = Data(importHexString: trimmed)
         }
@@ -155,7 +155,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     func clearSavedToken() {
-        MIWTokenVault.clear()
+        guard let deviceID = connected?.identifier else { return }
+        MIWTokenVault.clear(for: deviceID)
         hasSavedToken = false
         authStatus = "Saved token removed"
         appendLog("Pairing token removed from Keychain")
@@ -174,6 +175,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         token = nil
         appRandom = nil
         sessionKeys = nil
+        hasSavedToken = connected.map { MIWTokenVault.load(for: $0.identifier) != nil } ?? false
         wifiSSID = ""
         wifiPassword = ""
         if !keepStatus { authStatus = "Connect the glasses" }
@@ -181,8 +183,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     private func sendAppVerify() {
         guard stage == .waitingForStartResponse, let appRandom else { return }
-        let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? ""
-        let packet = MIWProtocol.buildAppVerify(appRandom: appRandom, appDeviceID: deviceID)
+        // Cloud-bound SDK records leave appDeviceId unset. Local/OOB binding is
+        // a separate flow; an unrelated vendor UUID is not a binding identity.
+        let packet = MIWProtocol.buildAppVerify(appRandom: appRandom)
         stage = .waitingForDeviceVerify
         armTimeout("DeviceVerify")
         authStatus = "Verifying pairing token"
@@ -234,9 +237,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
                     throw MIWProtocolError.deviceRejectedAuthentication
                 }
                 stage = .authenticated
-                if let token {
-                    MIWTokenVault.save(token)
-                    hasSavedToken = MIWTokenVault.load() == token
+                if let token, let deviceID = connected?.identifier {
+                    MIWTokenVault.save(token, for: deviceID)
+                    hasSavedToken = MIWTokenVault.load(for: deviceID) == token
                 }
                 authStatus = "Authenticated"
                 appendLog("MIWear authentication complete; iOS AES-CTR session ready")
