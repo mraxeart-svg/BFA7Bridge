@@ -82,8 +82,9 @@ signature validates it. Heap-reader tests cannot prove device compatibility.
 3. Encrypt SYSTEM/88 using that session; handle A5 fragments, ACKs and timeout.
 4. Accept only a successful SYSTEM/88 result and its structured AP credentials.
 5. Request the iOS hotspot connection, then transfer files via the observed
-   HTTP service on port 8080. The experimental ImportTool15 HTTP probe is
-   still a separate unfinished component, not an end-to-end importer.
+   HTTP service on port 8080. ImportTool15 now probes `/v1/filelists` on that
+   port instead of guessing port-80 endpoints. It is still a probe, not an
+   end-to-end downloader.
 6. Only close the AP after transfers finish. Persist validated pairing
    material in Keychain for reconnects, not in logs or hardcoded frames.
 
@@ -99,7 +100,9 @@ Frida, jailbreak or manually supplied session key during these tests.
 - Node tests cover the token reader's bounds, exact-string matching, layout
   check and duplicate class aliases. They do not execute on an iPhone.
 - macOS CI builds the iOS15.5 app and checks Swift AP parsing, negative cases,
-  fragment assembly and a two-block NIST CTR vector.
+  fragment assembly and a two-block NIST CTR vector. Synthetic vectors from
+  an independent Python cryptography implementation check HKDF, HMAC and
+  CCM serialization; they do not validate the glasses' authentication path.
 - Transport now waits for notification subscription, queues BLE fragments,
   observes backpressure and reports stage timeouts. It does not yet implement
   complete negotiated L1 retransmission/window semantics.

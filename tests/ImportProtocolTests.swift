@@ -57,6 +57,23 @@ enum ImportProtocolTests {
         let expected = hex("874d6191b620e3261bef6864990db6ce 9806f66b7970fdff8617187bb9fffdff")
         let encrypted = try MIWBTAESCTR.encrypt(plain, key: key, initialCounter: counter)
         precondition(encrypted == expected)
-        print("Import protocol: command, credentials, malformed packets, framing and CTR passed")
+
+        // Independent synthetic reference from Python cryptography HKDF/HMAC/AESCCM.
+        // This checks the primitive implementation, NOT device auth compatibility.
+        let keys = MIWProtocol.deriveKeys(token: Data(0..<16), appRandom: Data(16..<32), deviceRandom: Data(32..<48))
+        precondition(keys.deviceKey == hex("d738074e6570abb50d001db70f497a37"))
+        precondition(keys.appKey == hex("923e295e02aecb7619a8e1b9f574c988"))
+        precondition(keys.deviceIV == hex("8676d225"))
+        precondition(keys.appIV == hex("23869a15"))
+        let signature = hex("17aa8eecac21d9d71cba6ea653d126d77abc2f4d0357f1cce01d433d40e42235")
+        precondition(MIWProtocol.verifyDeviceSignature(signature, keys: keys, appRandom: Data(16..<32), deviceRandom: Data(32..<48)))
+        precondition(!MIWProtocol.verifyDeviceSignature(Data(repeating: 0, count: 32), keys: keys, appRandom: Data(16..<32), deviceRandom: Data(32..<48)))
+        let confirm = try MIWProtocol.buildAppConfirm(keys: keys, appRandom: Data(16..<32), deviceRandom: Data(32..<48), deviceName: "Test", systemVersion: 15.5, region: "RU")
+        let appSign = hex("7e6e4d786282c1af4441b2ed315da93c8ae2c820a72df584d62315d73913a9dc")
+        let companion = hex("806cad1c23f707c0417e2b53fb07a6c4e577f21dc9")
+        let auth = field(0x0a, appSign) + field(0x12, companion)
+        let account = hex("82 02") + Data([UInt8(auth.count)]) + auth
+        precondition(confirm == hex("08 01 10 1b") + field(0x1a, account))
+        print("Import protocol: command, credentials, malformed packets, framing, CTR, HKDF, HMAC and CCM passed")
     }
 }
