@@ -48,6 +48,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             clean build
 
+      - name: Verify import protocol
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          node tests/token_reader.test.js
+          xcrun swiftc BFA7ImportTool15/ImportModels.swift BFA7ImportTool15/MIWBTAESCTR.swift BFA7ImportTool15/MIWBTProtocol.swift tests/ImportProtocolTests.swift -o "$RUNNER_TEMP/import-protocol-tests"
+          "$RUNNER_TEMP/import-protocol-tests"
+
       - name: Package unsigned IPA
         run: |
           set -euo pipefail

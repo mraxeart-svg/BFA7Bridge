@@ -13,6 +13,9 @@ struct ImportDevice: Identifiable, Equatable {
 extension Data {
     init?(importHexString: String) {
         let hexadecimal = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        guard importHexString.unicodeScalars.allSatisfy({
+            hexadecimal.contains($0) || CharacterSet.whitespacesAndNewlines.contains($0)
+        }) else { return nil }
         let scalars = importHexString.unicodeScalars.filter { scalar in
             hexadecimal.contains(scalar)
         }
@@ -33,5 +36,28 @@ extension Data {
 
     var importHexString: String {
         map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
+}
+
+// BLE notifications are arbitrary fragments, including splits inside the magic/header.
+struct MIWFrameStream {
+    private var buffer: [UInt8] = []
+
+    mutating func append(_ data: Data) -> [Data] {
+        buffer.append(contentsOf: data)
+        var frames: [Data] = []
+        while buffer.count >= 2 {
+            guard buffer[0] == 0xA5 && buffer[1] == 0xA5 else {
+                buffer.removeFirst()
+                continue
+            }
+            guard buffer.count >= 8 else { break }
+            let length = Int(buffer[4]) | Int(buffer[5]) << 8
+            guard buffer.count >= 8 + length else { break }
+            frames.append(Data(buffer.prefix(8 + length)))
+            buffer.removeFirst(8 + length)
+        }
+        if buffer.count == 1 && buffer[0] != 0xA5 { buffer.removeAll() }
+        return frames
     }
 }

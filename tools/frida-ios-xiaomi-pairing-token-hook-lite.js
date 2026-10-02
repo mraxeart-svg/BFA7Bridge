@@ -1,285 +1,159 @@
-/*
- * Minimal MIWear pairing-token probe for Xiaomi Glasses on iOS.
- *
- * This version deliberately avoids ObjC.choose(), heap scans, and stored-property
- * offset reads. It performs one filtered symbol-table pass and hooks only the
- * six exact Swift config functions.
+/* Read only MIWBTPeripheralConfig.token; never call Swift through the C ABI.
+ * ARM64 Swift String layout: swift/stdlib/public/core/StringObject.swift.
+ * A candidate is a complete property, not a neighboring string or suffix.
  */
-
 'use strict';
-
-const PREFIX = 'BFA7-iOS-TOKEN-LITE';
+const VERSION = 'token-reader-3';
 const SYMBOLS = {
-  init: '$s9MIWBTCore21MIWBTPeripheralConfigC5token9phoneIdenACSS_SStcfC',
-  allocatingInit: '$s9MIWBTCore21MIWBTPeripheralConfigC5token9phoneIdenACSS_SStcfc',
-  tokenGetter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvg',
-  tokenSetter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvs',
-  peripheralConfig: '$s9MIWBTCore15MIWBTPeripheralC16peripheralConfigAA0bD0CyF',
-  updateConfig: '$s9MIWBTCore15MIWBTPeripheralC22updatePeripheralConfig6configyAA0bE0C_tF'
+  getter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvg',
+  setter: '$s9MIWBTCore21MIWBTPeripheralConfigC5tokenSSvs',
+  init: '$s9MIWBTCore21MIWBTPeripheralConfigC5token9phoneIdenACSS_SStcfc',
+  peripheral: '$s9MIWBTCore15MIWBTPeripheralC16peripheralConfigAA0bD0CyF'
 };
-
-const installed = new Set();
-const emitted = new Set();
-const resolved = new Map();
-let tokenGetterCall = null;
-let requestedGetterLabel = null;
-
-function now() { return new Date().toISOString(); }
-function log(message) { console.log(`[${PREFIX} ${now()}] ${message}`); }
-function safe(fn, fallback) {
-  try { return fn(); } catch (_) { return fallback; }
-}
-
-function readable(address) {
-  if (!address || address.isNull()) return false;
-  const range = Process.findRangeByAddress(address);
-  return !!range && range.protection.indexOf('r') >= 0;
-}
-
-function wordBytes(word) {
-  let value = word;
-  const bytes = [];
-  for (let index = 0; index < Process.pointerSize; index += 1) {
-    bytes.push(value.and(ptr('0xff')).toUInt32());
-    value = value.shr(8);
+const tokens = new Map();
+const stats = { objects: 0, empty: 0, unsupported: 0, unreadable: 0, decoded: 0 };
+let propertyOffset = null;
+let scanning = false;
+let installed = 0;
+function log(message) { console.log(`[BFA7-iOS-TOKEN-LITE ${new Date().toISOString()}] ${message}`); }
+function bytesOf(word) {
+  const output = [];
+  for (let index = 0; index < 8; index++) {
+    output.push(word.and(ptr('0xff')).toUInt32());
+    word = word.shr(8);
   }
-  return bytes;
+  return output;
 }
-
-function bytesText(bytes, count) {
-  const length = Math.min(count === undefined ? bytes.length : count, bytes.length);
-  let text = '';
-  for (let index = 0; index < length; index += 1) {
-    const value = bytes[index];
-    if (value === 0) break;
-    if (value < 0x20 || value > 0x7e) return null;
-    text += String.fromCharCode(value);
-  }
-  return text.length > 0 ? text : null;
+function exactASCII(bytes) {
+  if (bytes.some(value => value < 0x20 || value > 0x7e)) return null;
+  return String.fromCharCode.apply(null, bytes);
 }
-
-function cleanString(value) {
-  if (!value) return null;
-  const nul = value.indexOf('\0');
-  const text = (nul >= 0 ? value.slice(0, nul) : value).trim();
-  if (text.length < 4 || text.length > 512) return null;
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code < 0x20 || code > 0x7e) return null;
+function decodeString(first, second) {
+  const words = bytesOf(first).concat(bytesOf(second));
+  const tag = words[15];
+  if ((tag & 0x20) !== 0) {
+    const length = tag & 0x0f;
+    const text = exactASCII(words.slice(0, length));
+    return { kind: 'small', length, text, status: length === 0 ? 'empty' : text === null ? 'unsupported' : 'decoded' };
   }
-  return text;
+  const count = first.and(ptr('0x0000ffffffffffff'));
+  if (count.compare(ptr(256)) > 0) return { status: 'unsupported', kind: 'oversize' };
+  const length = count.toUInt32();
+  if (length === 0) return { status: 'empty', kind: 'large', length };
+  // b60 of countAndFlags means tail-allocated UTF-8, biased by 32.
+  if ((words[7] & 0x10) === 0) return { status: 'unsupported', kind: 'shared-or-foreign', length };
+  const start = second.and(ptr('0x0fffffffffffffff')).add(32);
+  try {
+    const raw = start.readByteArray(length);
+    if (raw === null) return { status: 'unreadable', kind: 'native', length };
+    const text = exactASCII(Array.from(new Uint8Array(raw)));
+    return { status: text === null ? 'unsupported' : 'decoded', kind: 'native', length, text };
+  } catch (_) { return { status: 'unreadable', kind: 'native', length }; }
 }
-
-function pointerVariants(value) {
-  const variants = [];
-  const masks = [
-    '0x0000ffffffffffff',
-    '0x00ffffffffffffff',
-    '0x0fffffffffffffff',
-    '0x7fffffffffffffff'
-  ];
-  function add(candidate) {
-    if (!candidate || candidate.isNull() || !readable(candidate)) return;
-    if (!variants.some(existing => existing.equals(candidate))) variants.push(candidate);
+function inspectPair(label, first, second) {
+  const result = decodeString(first, second);
+  stats[result.status]++;
+  log(`${label} status=${result.status} storage=${result.kind} length=${result.length === undefined ? '?' : result.length}`);
+  if (result.status !== 'decoded' || !/^(?:[0-9a-fA-F]{2}){8,128}$/.test(result.text)) return;
+  const hex = result.text.toUpperCase();
+  let candidate = tokens.get(hex);
+  if (!candidate) {
+    candidate = `candidate-${tokens.size + 1}`;
+    tokens.set(hex, candidate);
+    log(`TOKEN-CANDIDATE id=${candidate} bytes=${hex.length / 2}; authentication must validate it`);
+    log(`PAIRING_TOKEN_HEX=${hex}`);
   }
-  add(value);
-  masks.forEach(mask => add(safe(() => value.and(ptr(mask)), ptr('0'))));
-  return variants;
+  log(`${label} token=${candidate}`);
 }
-
-function stringsNearPointer(value) {
-  const found = [];
-  function add(text) {
-    const clean = cleanString(text);
-    if (clean && found.indexOf(clean) < 0) found.push(clean);
+function inspectConfig(label, instance) {
+  stats.objects++;
+  if (propertyOffset === null) { log(`${label} skipped: token layout unverified`); return; }
+  try {
+    const address = instance.handle || instance;
+    const field = address.add(propertyOffset);
+    inspectPair(label, field.readPointer(), field.add(8).readPointer());
+  } catch (error) {
+    stats.unreadable++;
+    log(`${label} read-error=${error.name || 'Error'}`);
   }
-  pointerVariants(value).forEach(base => {
-    for (let offset = 0; offset <= 96; offset += Process.pointerSize) {
-      add(safe(() => Memory.readUtf8String(base.add(offset), 256), null));
-      const indirect = safe(() => Memory.readPointer(base.add(offset)), ptr('0'));
-      pointerVariants(indirect).forEach(pointer => {
-        add(safe(() => Memory.readUtf8String(pointer, 256), null));
-      });
+}
+function verifyOffset(getter) {
+  // Inspect before Interceptor rewrites the prologue. Confirmed in 3.3.0 dump.
+  let cursor = getter;
+  let offset = null;
+  for (let index = 0; index < 16; index++) {
+    const instruction = Instruction.parse(cursor);
+    const operands = instruction.opStr.replace(/\s+/g, '');
+    if (instruction.mnemonic === 'add') {
+      const match = /^x0,x20,#(0x[0-9a-f]+|[0-9]+)$/i.exec(operands);
+      if (match) offset = Number(match[1]);
     }
-  });
-  return found;
-}
-
-function decodeSwiftString(first, second) {
-  const found = [];
-  function add(text) {
-    const clean = cleanString(text);
-    if (clean && found.indexOf(clean) < 0) found.push(clean);
-  }
-  const inline = wordBytes(first).concat(wordBytes(second));
-  const discriminator = inline[15];
-  if ((discriminator & 0xf0) === 0xe0) add(bytesText(inline, discriminator & 0x0f));
-  add(bytesText(inline, 15));
-  stringsNearPointer(second).forEach(add);
-  stringsNearPointer(first).forEach(add);
-  return found;
-}
-
-function compactHex(text) {
-  const compact = text.replace(/[\s:\-]/g, '');
-  return compact.length >= 16 && compact.length <= 256 &&
-    compact.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(compact)
-    ? compact.toUpperCase()
-    : null;
-}
-
-function inspectStringPair(label, first, second) {
-  decodeSwiftString(first, second).forEach(value => {
-    const key = `${label}:${value}`;
-    if (emitted.has(key)) return;
-    emitted.add(key);
-    log(`${label}=${JSON.stringify(value)}`);
-    const hex = compactHex(value);
-    if (hex) {
-      log(`PAIRING_TOKEN_HEX=${hex}`);
-      log('Copy only the text after PAIRING_TOKEN_HEX= into BFA7 Import 15.');
+    if (instruction.mnemonic === 'ldp') {
+      const match = /^x19,x20,\[x20,#(0x[0-9a-f]+|[0-9]+)\]$/i.exec(operands);
+      if (match && Number(match[1]) === offset && offset === 16) return offset;
     }
-  });
-}
-
-function invokeTokenGetter(label, config) {
-  if (!tokenGetterCall || !readable(config)) return;
-  requestedGetterLabel = label;
-  const result = safe(() => tokenGetterCall(config), null);
-  requestedGetterLabel = null;
-  if (result === null) log(`${label} getter-call failed`);
-}
-
-function inspectConfig(label, config) {
-  if (!readable(config)) return;
-  const tokenField = config.add(0x10);
-  const first = safe(() => Memory.readPointer(tokenField), ptr('0'));
-  const second = safe(() => Memory.readPointer(tokenField.add(Process.pointerSize)), ptr('0'));
-  inspectStringPair(label, first, second);
-  invokeTokenGetter(`${label}-getter`, config);
-}
-
-function scanExistingConfigs(reason) {
-  if (!ObjC.available) {
-    log(`CONFIG-SCAN reason=${reason} ObjC unavailable`);
-    return;
-  }
-  const candidates = [
-    '_TtC9MIWBTCore21MIWBTPeripheralConfig',
-    'MIWBTCore.MIWBTPeripheralConfig',
-    'MIWBTPeripheralConfig'
-  ];
-  const classNames = candidates.filter(name => !!ObjC.classes[name]);
-  log(`CONFIG-SCAN reason=${reason} classes=${classNames.join(',') || '<none>'}`);
-  classNames.forEach(className => {
-    let count = 0;
-    safe(() => ObjC.choose(ObjC.classes[className], {
-      onMatch(instance) {
-        count += 1;
-        inspectConfig(`existing-config-token-${count}`, instance.handle);
-      },
-      onComplete() {
-        log(`CONFIG-SCAN class=${className} instances=${count}`);
-      }
-    }), null);
-  });
-}
-
-function resolveTargets(module) {
-  const wanted = new Map();
-  Object.values(SYMBOLS).forEach(name => {
-    wanted.set(name, name);
-    wanted.set(`_${name}`, name);
-  });
-
-  const symbols = safe(() => Module.enumerateSymbolsSync(module.name), []);
-  symbols.forEach(symbol => {
-    const canonical = wanted.get(symbol.name);
-    if (canonical && !resolved.has(canonical)) resolved.set(canonical, symbol.address);
-  });
-  log(`TARGET-SCAN symbols=${symbols.length} matched=${resolved.size}`);
-}
-
-function resolve(name) {
-  const address = resolved.get(name);
-  if (address && !address.isNull()) {
-    return address;
+    if (instruction.mnemonic === 'ret') break;
+    cursor = instruction.next;
   }
   return null;
 }
-
-function attach(name, symbolName, callbacks) {
-  const address = resolve(symbolName);
-  if (!address) {
-    log(`MISS ${name}`);
-    return;
-  }
-  const key = address.toString();
-  if (installed.has(key)) return;
-  Interceptor.attach(address, callbacks);
-  installed.add(key);
-  log(`HOOK ${name} ${address}`);
+function scanExistingConfigs() {
+  if (scanning) return 'scan already running';
+  if (propertyOffset === null) return 'layout not verified; observing natural calls only';
+  scanning = true;
+  try {
+    const names = ['_TtC9MIWBTCore21MIWBTPeripheralConfig', 'MIWBTCore.MIWBTPeripheralConfig', 'MIWBTPeripheralConfig'];
+    const seen = new Set();
+    for (const name of names) {
+      const cls = ObjC.classes[name];
+      if (!cls || seen.has(cls.handle.toString())) continue;
+      seen.add(cls.handle.toString());
+      log(`CONFIG-SCAN class=${name}`);
+      let count = 0;
+      ObjC.choose({ class: cls, subclasses: false }, {
+        onMatch(instance) { count++; inspectConfig(`config-${count}`, instance); },
+        onComplete() { log(`CONFIG-SCAN instances=${count}`); }
+      });
+    }
+    if (seen.size === 0) log('CONFIG-SCAN class-not-found');
+  } catch (error) { log(`CONFIG-SCAN failed=${error.name || 'Error'}`); }
+  finally { scanning = false; }
+  log(`RESULT ${JSON.stringify({ ...stats, candidates: tokens.size })}`);
+  return 'scan complete';
 }
-
 function install() {
+  log(`Installing ${VERSION}`);
+  if (Process.arch !== 'arm64' || !ObjC.available) { log('Unsupported runtime'); return; }
   const module = Process.findModuleByName('MIWBTCore');
-  if (!module) {
-    log('MIWBTCore is not loaded yet; retrying');
-    setTimeout(install, 1000);
-    return;
+  if (!module) { log('MIWBTCore not loaded; open glasses screen then reload'); return; }
+  const symbols = typeof module.enumerateSymbols === 'function'
+    ? module.enumerateSymbols() : Module.enumerateSymbolsSync(module.name);
+  const targets = {};
+  for (const [label, name] of Object.entries(SYMBOLS)) {
+    const match = symbols.find(s => (s.name === name || s.name === `_${name}`) && !s.address.isNull());
+    if (match) targets[label] = match.address;
   }
-
-  log(`Installing narrow hooks in MIWBTCore base=${module.base}`);
-  resolveTargets(module);
-  const getterAddress = resolve(SYMBOLS.tokenGetter);
-  if (getterAddress) {
-    tokenGetterCall = new NativeFunction(getterAddress, 'pointer', ['pointer']);
+  if (targets.getter) {
+    try { propertyOffset = verifyOffset(targets.getter); }
+    catch (_) { log('LAYOUT instruction-read failed'); }
   }
-  attach('config-init', SYMBOLS.init, {
-    onEnter(args) {
-      inspectStringPair('init-token', args[0], args[1]);
-    }
-  });
-  attach('config-allocating-init', SYMBOLS.allocatingInit, {
-    onEnter(args) {
-      inspectStringPair('alloc-init-token', args[0], args[1]);
-    }
-  });
-  attach('token-getter', SYMBOLS.tokenGetter, {
-    onEnter() {
-      this.label = requestedGetterLabel || 'token-getter';
-    },
-    onLeave(retval) {
-      inspectStringPair(this.label, retval, this.context.x1);
-    }
-  });
-  attach('token-setter', SYMBOLS.tokenSetter, {
-    onEnter(args) {
-      inspectStringPair('token-setter', args[0], args[1]);
-    }
-  });
-  attach('peripheral-config', SYMBOLS.peripheralConfig, {
-    onLeave(retval) {
-      inspectConfig('peripheral-config-token', retval);
-    }
-  });
-  attach('update-config', SYMBOLS.updateConfig, {
-    onEnter(args) {
-      inspectConfig('update-config-token', args[0]);
-    }
-  });
-  log(`Installed hooks=${installed.size}; reconnect the glasses inside Xiaomi Glasses if no token appears.`);
-  setTimeout(() => scanExistingConfigs('startup'), 250);
+  log(`LAYOUT tokenOffset=${propertyOffset === null ? 'unverified' : propertyOffset}`);
+  const handlers = {
+    getter: { onLeave(retval) { inspectPair('getter', retval, this.context.x1); } },
+    setter: { onEnter(args) { inspectPair('setter', args[0], args[1]); } },
+    init: { onEnter(args) { inspectPair('init', args[0], args[1]); } },
+    peripheral: { onLeave(retval) { inspectConfig('active-config', retval); } }
+  };
+  for (const [label, callbacks] of Object.entries(handlers)) {
+    if (!targets[label]) { log(`MISS ${label}`); continue; }
+    try { Interceptor.attach(targets[label], callbacks); installed++; }
+    catch (error) { log(`HOOK-FAILED ${label} ${error.name || 'Error'}`); }
+  }
+  log(`Installed hooks=${installed}; scanning existing config once`);
+  setTimeout(scanExistingConfigs, 250);
 }
-
 setImmediate(install);
-
 rpc.exports = {
-  scan() {
-    scanExistingConfigs('rpc');
-    return 'scan requested';
-  },
-  status() {
-    return JSON.stringify({ hooks: installed.size, candidates: emitted.size });
-  }
+  scan: scanExistingConfigs,
+  status() { return { version: VERSION, hooks: installed, layoutVerified: propertyOffset !== null, ...stats, candidates: tokens.size }; }
 };

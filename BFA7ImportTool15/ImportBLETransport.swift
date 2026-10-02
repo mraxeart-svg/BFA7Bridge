@@ -17,6 +17,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     @Published var wifiPassword = ""
     @Published var wifiGateway = "192.168.43.1"
     @Published var hasSavedToken = false
+    @Published private(set) var notificationsReady = false
     @Published var log: [String] = []
 
     private enum AuthStage {
@@ -33,13 +34,17 @@ final class ImportBLETransport: NSObject, ObservableObject {
     private var connected: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var notifyCharacteristic: CBCharacteristic?
-    private var receiveBuffer = Data()
+    private var receiveStream = MIWFrameStream()
+    private var writeQueue: [Data] = []
+    private var awaitingWriteResponse = false
+    private var lastReceivedFrame: Data?
     private var txSequence: UInt8 = 0
     private var stage: AuthStage = .idle
     private var token: Data?
     private var appRandom: Data?
     private var sessionKeys: MIWSessionKeys?
     private var importRequestTask: Task<Void, Never>?
+    private var sessionID = UUID()
 
     private let fe95Service = CBUUID(string: "FE95")
     private let writeUUID = CBUUID(string: "005F")
@@ -52,11 +57,12 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     var canAuthenticate: Bool {
-        connected != nil && writeCharacteristic != nil && notifyCharacteristic != nil
+        connected?.state == .connected && writeCharacteristic != nil && notificationsReady
+            && (stage == .idle || stage == .authenticated)
     }
 
     var canOpenWiFi: Bool {
-        stage == .authenticated || stage == .waitingForWiFi
+        stage == .authenticated
     }
 
     func startScan() {
@@ -82,8 +88,14 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     func connect(_ device: ImportDevice) {
         guard let peripheral = peripherals[device.id] else { return }
+        if connected === peripheral && peripheral.state != .disconnected { return }
         stopScan()
+        if let previous = connected { central.cancelPeripheralConnection(previous) }
         resetSession(keepStatus: true)
+        writeCharacteristic = nil
+        notifyCharacteristic = nil
+        notificationsReady = false
+        writeTarget = "none"
         connectedName = "connecting \(device.name)"
         authStatus = "Connecting"
         connected = peripheral
@@ -93,7 +105,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     func disconnect() {
-        importRequestTask?.cancel()
+        resetSession(keepStatus: false)
+        notificationsReady = false
         if let connected { central.cancelPeripheralConnection(connected) }
     }
 
@@ -127,6 +140,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         }
 
         stage = .waitingForStartResponse
+        armTimeout("L1 START response")
         authStatus = "Starting MIWear transport"
         sendFrame(type: 2, sequence: 0, payload: MIWProtocol.l1StartPayload)
         appendLog("L1 START request sent")
@@ -150,7 +164,11 @@ final class ImportBLETransport: NSObject, ObservableObject {
     private func resetSession(keepStatus: Bool) {
         importRequestTask?.cancel()
         importRequestTask = nil
-        receiveBuffer.removeAll(keepingCapacity: true)
+        sessionID = UUID()
+        receiveStream = MIWFrameStream()
+        writeQueue.removeAll()
+        awaitingWriteResponse = false
+        lastReceivedFrame = nil
         txSequence = 0
         stage = .idle
         token = nil
@@ -166,6 +184,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? ""
         let packet = MIWProtocol.buildAppVerify(appRandom: appRandom, appDeviceID: deviceID)
         stage = .waitingForDeviceVerify
+        armTimeout("DeviceVerify")
         authStatus = "Verifying pairing token"
         sendL2(channel: 1, opcode: 1, payload: packet)
         appendLog("AppVerify sent: \(MIWProtocol.packetSummary(packet))")
@@ -194,8 +213,6 @@ final class ImportBLETransport: NSObject, ObservableObject {
                 }
 
                 sessionKeys = keys
-                MIWTokenVault.save(token)
-                hasSavedToken = true
                 let version = ProcessInfo.processInfo.operatingSystemVersion
                 let systemVersion = Float("\(version.majorVersion).\(version.minorVersion)") ?? 15.0
                 let packet = try MIWProtocol.buildAppConfirm(
@@ -207,6 +224,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
                     region: Locale.current.regionCode ?? ""
                 )
                 stage = .waitingForDeviceConfirm
+                armTimeout("DeviceConfirm")
                 authStatus = "Confirming encrypted session"
                 sendL2(channel: 1, opcode: 1, payload: packet)
                 appendLog("Device signature valid; AppConfirm sent")
@@ -216,6 +234,10 @@ final class ImportBLETransport: NSObject, ObservableObject {
                     throw MIWProtocolError.deviceRejectedAuthentication
                 }
                 stage = .authenticated
+                if let token {
+                    MIWTokenVault.save(token)
+                    hasSavedToken = MIWTokenVault.load() == token
+                }
                 authStatus = "Authenticated"
                 appendLog("MIWear authentication complete; iOS AES-CTR session ready")
                 requestCurrentWiFiAP()
@@ -230,29 +252,15 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     private func requestCurrentWiFiAP() {
         guard sessionKeys != nil else { return }
+        sessionID = UUID()
+        wifiSSID = ""
+        wifiPassword = ""
         stage = .waitingForWiFi
+        armTimeout("Wi-Fi AP result", seconds: 30)
         authStatus = "Requesting import Wi-Fi"
         do {
-            try sendEncrypted(MIWProtocol.iOSImportReadyPacket())
-            appendLog("Sent Xiaomi iOS import-ready packet")
-        } catch {
-            fail(error)
-            return
-        }
-
-        importRequestTask?.cancel()
-        importRequestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
-            await self?.sendIOSWiFiRequestIfNeeded()
-        }
-    }
-
-    private func sendIOSWiFiRequestIfNeeded() {
-        guard wifiSSID.isEmpty, stage == .waitingForWiFi else { return }
-        do {
             try sendEncrypted(MIWProtocol.iOSWiFiAPRequest())
-            appendLog("Sent Xiaomi iOS wifiApRequest frequency=1")
+            appendLog("Sent SYSTEM / ENABLE_WIFI_AP (type=2 id=88)")
         } catch {
             fail(error)
         }
@@ -301,7 +309,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     private func acceptWiFiCredentials(_ credentials: MIWWiFiCredentials) {
+        guard stage == .waitingForWiFi else { return }
         importRequestTask?.cancel()
+        stage = .authenticated
         wifiSSID = credentials.ssid
         wifiPassword = credentials.password
         wifiGateway = credentials.gateway.isEmpty ? "192.168.43.1" : credentials.gateway
@@ -322,13 +332,14 @@ final class ImportBLETransport: NSObject, ObservableObject {
             )
         }
         configuration.joinOnce = true
+        let requestSession = sessionID
         authStatus = "Joining \(credentials.ssid)"
         NEHotspotConfigurationManager.shared.apply(configuration) { [weak self] error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.sessionID == requestSession else { return }
                 if let error = error as NSError?,
-                   error.domain == NEHotspotConfigurationErrorDomain,
-                   error.code != NEHotspotConfigurationError.alreadyAssociated.rawValue {
+                   !(error.domain == NEHotspotConfigurationErrorDomain &&
+                     error.code == NEHotspotConfigurationError.alreadyAssociated.rawValue) {
                     self.authStatus = "Wi-Fi join failed: \(error.localizedDescription)"
                     self.appendLog(self.authStatus)
                 } else {
@@ -340,28 +351,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     private func processNotification(_ data: Data) {
-        receiveBuffer.append(data)
-        while true {
-            guard receiveBuffer.count >= 8 else { return }
-            if receiveBuffer[0] != 0xA5 || receiveBuffer[1] != 0xA5 {
-                if let magic = receiveBuffer.indices.dropFirst().first(where: {
-                    receiveBuffer[$0] == 0xA5 && $0 + 1 < receiveBuffer.count && receiveBuffer[$0 + 1] == 0xA5
-                }) {
-                    receiveBuffer.removeFirst(magic)
-                } else {
-                    receiveBuffer.removeAll(keepingCapacity: true)
-                    return
-                }
-                continue
-            }
-
-            let length = Int(receiveBuffer[4]) | (Int(receiveBuffer[5]) << 8)
-            let total = 8 + length
-            guard receiveBuffer.count >= total else { return }
-            let frame = Data(receiveBuffer.prefix(total))
-            receiveBuffer.removeFirst(total)
-            handleFrame(frame)
-        }
+        for frame in receiveStream.append(data) { handleFrame(frame) }
     }
 
     private func handleFrame(_ frame: Data) {
@@ -384,6 +374,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
             if payload.first == 2 { sendAppVerify() }
         case 3:
             sendFrame(type: 1, sequence: sequence, payload: Data())
+            guard frame != lastReceivedFrame else { return }
+            lastReceivedFrame = frame
             handleL2(payload)
         default:
             appendLog("Ignored L1 type=\(type), seq=\(sequence)")
@@ -415,12 +407,38 @@ final class ImportBLETransport: NSObject, ObservableObject {
             ? .withoutResponse
             : .withResponse
         let maximum = peripheral.maximumWriteValueLength(for: writeType)
-        guard frame.count <= maximum else {
-            appendLog("L1 frame \(frame.count) B exceeds BLE write maximum \(maximum) B")
+        guard maximum > 0, writeQueue.count < 512 else {
+            fail(MIWProtocolError.malformedPacket("BLE write queue is unavailable"))
             return
         }
-        peripheral.writeValue(frame, for: characteristic, type: writeType)
+        for offset in stride(from: 0, to: frame.count, by: maximum) {
+            writeQueue.append(frame.subdata(in: offset..<min(offset + maximum, frame.count)))
+        }
         lastWrite = "\(frame.count) B \(Data(frame.prefix(40)).importHexString)"
+        drainWrites()
+    }
+
+    private func drainWrites() {
+        guard let peripheral = connected, peripheral.state == .connected,
+              let characteristic = writeCharacteristic else { return }
+        let type: CBCharacteristicWriteType = characteristic.properties.contains(.writeWithoutResponse)
+            ? .withoutResponse : .withResponse
+        while !writeQueue.isEmpty {
+            if type == .withoutResponse && !peripheral.canSendWriteWithoutResponse { return }
+            if type == .withResponse && awaitingWriteResponse { return }
+            let fragment = writeQueue.removeFirst()
+            if type == .withResponse { awaitingWriteResponse = true }
+            peripheral.writeValue(fragment, for: characteristic, type: type)
+        }
+    }
+
+    private func armTimeout(_ response: String, seconds: UInt64 = 20) {
+        importRequestTask?.cancel()
+        importRequestTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.fail(MIWProtocolError.malformedPacket("timed out waiting for \(response)"))
+        }
     }
 
     private func crc16ARC(_ data: Data) -> UInt16 {
@@ -444,7 +462,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     }
 
     private func fail(_ error: Error) {
-        stage = .idle
+        resetSession(keepStatus: true)
         authStatus = error.localizedDescription
         appendLog("ERROR: \(error.localizedDescription)")
     }
@@ -473,6 +491,16 @@ extension ImportBLETransport: CBCentralManagerDelegate {
             case .unknown: bluetoothState = "Bluetooth: unknown"
             @unknown default: bluetoothState = "Bluetooth: unknown"
             }
+            if central.state != .poweredOn {
+                notificationsReady = false
+                writeCharacteristic = nil
+                notifyCharacteristic = nil
+                connected = nil
+                connectedName = "not connected"
+                writeTarget = "none"
+                isScanning = false
+                resetSession(keepStatus: false)
+            }
         }
     }
 
@@ -500,6 +528,7 @@ extension ImportBLETransport: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
+            guard connected === peripheral else { return }
             connectedName = peripheral.name ?? peripheral.identifier.uuidString
             authStatus = "Discovering FE95 service"
             appendLog("Connected: \(connectedName)")
@@ -509,6 +538,9 @@ extension ImportBLETransport: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
+            guard connected === peripheral else { return }
+            connected = nil
+            resetSession(keepStatus: true)
             connectedName = "connect failed"
             authStatus = "Connection failed"
             appendLog("Connect failed: \(error?.localizedDescription ?? "unknown")")
@@ -517,6 +549,9 @@ extension ImportBLETransport: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
+            guard connected === peripheral else { return }
+            connected = nil
+            notificationsReady = false
             connectedName = "not connected"
             writeTarget = "none"
             writeCharacteristic = nil
@@ -530,6 +565,7 @@ extension ImportBLETransport: CBCentralManagerDelegate {
 extension ImportBLETransport: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         Task { @MainActor in
+            guard connected === peripheral else { return }
             if let error { appendLog("Service discovery error: \(error.localizedDescription)") }
             guard let service = peripheral.services?.first(where: { $0.uuid == fe95Service }) else {
                 authStatus = "FE95 service not found"
@@ -541,6 +577,7 @@ extension ImportBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         Task { @MainActor in
+            guard connected === peripheral else { return }
             if let error { appendLog("Characteristic discovery error: \(error.localizedDescription)") }
             for characteristic in service.characteristics ?? [] {
                 if characteristic.uuid == notifyUUID,
@@ -565,21 +602,26 @@ extension ImportBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
+            guard connected === peripheral, characteristic.uuid == notifyUUID else { return }
+            notificationsReady = error == nil && characteristic.isNotifying
             if let error {
-                appendLog("Notify setup failed: \(error.localizedDescription)")
+                fail(error)
             } else {
                 appendLog("Notify \(shortUUID(characteristic.uuid)) enabled=\(characteristic.isNotifying)")
+                if canAuthenticate { authStatus = "Ready for authentication" }
             }
         }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        let value = characteristic.value
         Task { @MainActor in
+            guard connected === peripheral else { return }
             if let error {
                 appendLog("Notify error: \(error.localizedDescription)")
                 return
             }
-            guard characteristic.uuid == notifyUUID, let data = characteristic.value else { return }
+            guard characteristic.uuid == notifyUUID, let data = value else { return }
             lastNotify = "\(data.count) B \(Data(data.prefix(40)).importHexString)"
             processNotification(data)
         }
@@ -587,7 +629,17 @@ extension ImportBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
-            if let error { appendLog("Write failed: \(error.localizedDescription)") }
+            guard connected === peripheral, characteristic.uuid == writeUUID else { return }
+            awaitingWriteResponse = false
+            if let error { fail(error); return }
+            drainWrites()
+        }
+    }
+
+    nonisolated func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        Task { @MainActor in
+            guard connected === peripheral else { return }
+            drainWrites()
         }
     }
 }

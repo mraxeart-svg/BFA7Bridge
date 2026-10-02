@@ -31,7 +31,7 @@ enum MIWProtocolError: LocalizedError {
         case .malformedPacket(let detail):
             return "Malformed MIWear packet: \(detail)"
         case .deviceSignatureMismatch:
-            return "The glasses rejected the saved token"
+            return "Device signature mismatch; token or authentication protocol is incorrect"
         case .deviceRejectedAuthentication:
             return "The glasses did not confirm authentication"
         }
@@ -91,6 +91,11 @@ enum MIWProtocol {
     }
 
     static func parseDeviceVerify(_ packet: Data) throws -> (random: Data, signature: Data) {
+        let envelope = fields(in: packet)
+        guard envelope.first(where: { $0.number == 1 })?.integer == 1,
+              envelope.first(where: { $0.number == 2 })?.integer == 26 else {
+            throw MIWProtocolError.malformedPacket("expected AUTH_VERIFY (type=1 id=26)")
+        }
         guard let account = fields(in: packet).first(where: { $0.number == 3 })?.bytes else {
             throw MIWProtocolError.malformedPacket("missing account payload")
         }
@@ -99,7 +104,8 @@ enum MIWProtocol {
         }
         let values = fields(in: verify)
         guard let random = values.first(where: { $0.number == 1 })?.bytes,
-              let signature = values.first(where: { $0.number == 2 })?.bytes else {
+              let signature = values.first(where: { $0.number == 2 })?.bytes,
+              random.count == 16, signature.count == 32 else {
             throw MIWProtocolError.malformedPacket("incomplete DeviceVerify")
         }
         return (random, signature)
@@ -154,27 +160,24 @@ enum MIWProtocol {
     }
 
     static func parseDeviceConfirm(_ packet: Data) throws -> Bool {
+        let envelope = fields(in: packet)
+        guard envelope.first(where: { $0.number == 1 })?.integer == 1,
+              envelope.first(where: { $0.number == 2 })?.integer == 27 else {
+            throw MIWProtocolError.malformedPacket("expected AUTH_CONFIRM (type=1 id=27)")
+        }
         guard let account = fields(in: packet).first(where: { $0.number == 3 })?.bytes,
               let confirm = fields(in: account).first(where: { $0.number == 33 })?.bytes,
               let result = fields(in: confirm).first(where: { $0.number == 1 })?.integer else {
             throw MIWProtocolError.malformedPacket("missing DeviceConfirm")
         }
-        return result != 0
+        return result == 1
     }
 
-    static func iOSImportReadyPacket() -> Data {
-        // Exact plaintext emitted immediately before wifiApRequest by Xiaomi Glasses 3.3.0.
-        Data([0x08, 0x0D, 0x10, 0x06])
-    }
-
-    static func iOSWiFiAPRequest(frequency: UInt8 = 1) -> Data {
-        // Exact MIWearPB schema shipped in Xiaomi Glasses 3.3.0 for iOS.
-        var packet = Data([
-            0x08, 0x0E, 0x10, 0x05, 0x82, 0x01, 0x0E, 0x2A, 0x0C, 0x08, 0x00,
-            0x10, 0x00, 0x18, 0x00, 0x20, 0x00, 0x28, 0x00, 0x30, 0x00
-        ])
-        packet[packet.count - 1] = frequency
-        return packet
+    static func iOSWiFiAPRequest() -> Data {
+        // 2026-09-25 FLOW capture: 11:53:26.004Z, followed by type=2/id=88 credentials.
+        // WearPacket SYSTEM / ENABLE_WIFI_AP. The former type=14/id=5 candidate
+        // appears AFTER credentials in that capture and is not evidence of an AP trigger.
+        Data([0x08, 0x02, 0x10, 0x58])
     }
 
     static func sealSessionPacket(_ packet: Data, keys: MIWSessionKeys) throws -> Data {
@@ -192,31 +195,28 @@ enum MIWProtocol {
     }
 
     static func parseWiFiCredentials(_ packet: Data) -> MIWWiFiCredentials? {
-        // Current Android protobuf: WearPacket.system(4) -> wifiApResult(56)
+        // Confirmed iOS FLOW response at 11:53:43.380Z: type=2/id=88.
+        // WearPacket.system(4) -> wifiApResult(56)
         // -> Result.wifiAp(2) -> ssid/password/gateway(1/2/3).
-        if let system = fieldBytes(4, in: packet),
+        let envelope = fields(in: packet)
+        if envelope.first(where: { $0.number == 1 })?.integer == 2,
+           envelope.first(where: { $0.number == 2 })?.integer == 88,
+           let system = fieldBytes(4, in: packet),
            let result = fieldBytes(56, in: system),
+           fields(in: result).first(where: { $0.number == 1 })?.integer == 0,
            let wifi = fieldBytes(2, in: result),
-           let ssid = fieldString(1, in: wifi), !ssid.isEmpty {
+           let ssid = fieldString(1, in: wifi), (1...32).contains(ssid.utf8.count),
+           let password = fieldString(2, in: wifi),
+           password.isEmpty || (8...63).contains(password.utf8.count),
+           let gateway = fieldString(3, in: wifi), isIPv4(gateway) {
             return MIWWiFiCredentials(
                 ssid: ssid,
-                password: fieldString(2, in: wifi) ?? "",
-                gateway: fieldString(3, in: wifi) ?? "192.168.43.1"
+                password: password,
+                gateway: gateway
             )
         }
 
-        var strings: [String] = []
-        collectStrings(in: packet, depth: 0, output: &strings)
-        let ssid = strings.first(where: {
-            let value = $0.lowercased()
-            return value.contains("xiaomi") || value.contains("glass") || value.contains("bfa7")
-        })
-        guard let ssid else { return nil }
-        let gateway = strings.first(where: isIPv4) ?? "192.168.43.1"
-        let password = strings.first(where: {
-            $0 != ssid && $0 != gateway && $0.count >= 8 && $0.count <= 64
-        }) ?? ""
-        return MIWWiFiCredentials(ssid: ssid, password: password, gateway: gateway)
+        return nil
     }
 
     static func packetSummary(_ packet: Data) -> String {
@@ -276,28 +276,29 @@ enum MIWProtocol {
     }
 
     private static func fields(in data: Data) -> [MIWProtoField] {
+        let data = Data(data)
         var offset = 0
         var output: [MIWProtoField] = []
-        while offset < data.count, let key = readVarint(data, offset: &offset) {
+        while offset < data.count {
+            guard let key = readVarint(data, offset: &offset), key >> 3 <= 0x1FFFFFFF else { return [] }
             let number = Int(key >> 3)
             let wire = Int(key & 7)
-            guard number > 0 else { return output }
+            guard number > 0 else { return [] }
             switch wire {
             case 0:
-                guard let value = readVarint(data, offset: &offset) else { return output }
+                guard let value = readVarint(data, offset: &offset) else { return [] }
                 output.append(MIWProtoField(number: number, wireType: wire, integer: value, bytes: nil, fixed32: nil))
             case 1:
-                guard offset + 8 <= data.count else { return output }
+                guard data.count - offset >= 8 else { return [] }
                 offset += 8
             case 2:
                 guard let length = readVarint(data, offset: &offset),
-                      length <= UInt64(Int.max),
-                      offset + Int(length) <= data.count else { return output }
+                      length <= UInt64(data.count - offset) else { return [] }
                 let bytes = data.subdata(in: offset..<(offset + Int(length)))
                 offset += Int(length)
                 output.append(MIWProtoField(number: number, wireType: wire, integer: nil, bytes: bytes, fixed32: nil))
             case 5:
-                guard offset + 4 <= data.count else { return output }
+                guard data.count - offset >= 4 else { return [] }
                 let value = UInt32(data[offset])
                     | (UInt32(data[offset + 1]) << 8)
                     | (UInt32(data[offset + 2]) << 16)
@@ -305,7 +306,7 @@ enum MIWProtocol {
                 offset += 4
                 output.append(MIWProtoField(number: number, wireType: wire, integer: nil, bytes: nil, fixed32: value))
             default:
-                return output
+                return []
             }
         }
         return output
@@ -317,6 +318,7 @@ enum MIWProtocol {
         while offset < data.count, shift < 64 {
             let byte = data[offset]
             offset += 1
+            if shift == 63 && byte > 1 { return nil }
             value |= UInt64(byte & 0x7F) << shift
             if byte & 0x80 == 0 { return value }
             shift += 7
@@ -331,25 +333,6 @@ enum MIWProtocol {
     private static func fieldString(_ number: Int, in data: Data) -> String? {
         guard let bytes = fieldBytes(number, in: data) else { return nil }
         return String(data: bytes, encoding: .utf8)
-    }
-
-    private static func collectStrings(in data: Data, depth: Int, output: inout [String]) {
-        guard depth < 7 else { return }
-        for field in fields(in: data) where field.wireType == 2 {
-            guard let bytes = field.bytes, !bytes.isEmpty else { continue }
-            if let value = String(data: bytes, encoding: .utf8), isPrintable(value) {
-                if !output.contains(value) { output.append(value) }
-            } else {
-                collectStrings(in: bytes, depth: depth + 1, output: &output)
-            }
-        }
-    }
-
-    private static func isPrintable(_ value: String) -> Bool {
-        guard (1...96).contains(value.count) else { return false }
-        return value.unicodeScalars.allSatisfy { scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F
-        }
     }
 
     private static func isIPv4(_ value: String) -> Bool {

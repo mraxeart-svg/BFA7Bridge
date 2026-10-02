@@ -19,6 +19,7 @@ INLINE_RE = re.compile(
     r"\[BFA7-iOS-FLOW (?P<ts>[^\]]+)\] FLOW (?P<phase>.*?)"
     r"MIWFlowEncrypt\.(?P<op>encrypt|decrypt)\(data:\).*?"
     r"swiftdata-inline x0-le=(?P<hex>(?:[0-9A-F]{2} ?)+) ascii=(?P<ascii>.*?) "
+    r"x1-le=(?P<tail>(?:[0-9A-F]{2} ?)+) ascii="
 )
 CB_WRITE_RE = re.compile(
     r"\[BFA7-iOS-FLOW (?P<ts>[^\]]+)\] CB WRITE "
@@ -55,8 +56,10 @@ def classify(hex_text: str, ascii_text: str, kind: str) -> str:
     compact = normalize_hex(hex_text)
     if "Xiaomi AI Glasses" in ascii_text and "192.168.43.1" in ascii_text:
         return "wifi-credentials"
-    if compact.startswith("08 0E 10 05 82 01 0E 2A 0C"):
+    if compact == "08 02 10 58":
         return "wifi-ap-trigger"
+    if compact.startswith("08 02 10 59"):
+        return "wifi-ap-disable"
     if "LLHDR_" in ascii_text:
         return "media-file"
     if "AlipayGGlasses" in ascii_text or "PaySDK" in ascii_text:
@@ -103,9 +106,14 @@ def parse_log(path: Path) -> tuple[list[Event], list[tuple[int, str, str, str]]]
         if m := INLINE_RE.search(line):
             phase = m.group("phase").strip() or "ARG"
             kind = f"{phase} {m.group('op')} inline".strip()
-            hex_text = normalize_hex(m.group("hex"))
+            head = bytes.fromhex(m.group("hex"))
+            tail = bytes.fromhex(m.group("tail"))
+            if len(head) != 8 or len(tail) != 8 or tail[7] != 0 or tail[6] > 14:
+                continue
+            payload = (head + tail[:6])[:tail[6]]
+            hex_text = payload.hex(" ").upper()
             ascii_text = m.group("ascii")
-            if hex_text.startswith(("08 ", "F9 ")):
+            if payload:
                 events.append(
                     Event(
                         line_no,
