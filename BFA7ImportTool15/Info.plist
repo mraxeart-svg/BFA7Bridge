@@ -26,6 +26,12 @@
     <string>BFA7 Import Tool connects to Xiaomi AI Glasses over Bluetooth Low Energy.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>BFA7 Import Tool probes the temporary glasses Wi-Fi import endpoint on the local network.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Save downloaded glasses photos to your photo library.</string>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>

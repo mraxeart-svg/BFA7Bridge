@@ -58,6 +58,21 @@ jobs:
           xcrun swiftc BFA7ImportTool15/ImportModels.swift BFA7ImportTool15/MIWBTAESCTR.swift BFA7ImportTool15/MIWBTProtocol.swift tests/ImportProtocolTests.swift -o "$RUNNER_TEMP/import-protocol-tests"
           "$RUNNER_TEMP/import-protocol-tests"
 
+      - name: Verify media import
+        run: |
+          set -euo pipefail
+          xcrun swiftc BFA7ImportTool15/ImportMediaProtocol.swift BFA7ImportTool15/ImportMediaProbe.swift tests/ImportMediaTransferTests.swift -o "$RUNNER_TEMP/import-media-tests"
+          python3 tests/import_media_server.py 48295 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID"' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:48295/v1/filelists >/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          "$RUNNER_TEMP/import-media-tests" http://127.0.0.1:48295
+
       - name: Package unsigned IPA
         run: |
           set -euo pipefail

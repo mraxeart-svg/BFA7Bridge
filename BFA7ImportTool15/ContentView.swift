@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import QuickLook
 
 struct ContentView: View {
     @EnvironmentObject private var transport: ImportBLETransport
@@ -13,6 +14,8 @@ struct ContentView: View {
     @State private var loadingBTCoreCandidate = false
     @State private var credentialErrorMessage = ""
     @State private var showingWiFiPassword = false
+    @State private var previewURL: URL?
+    @State private var sharedFile: ImportSharedFile?
 
     var body: some View {
         NavigationView {
@@ -42,6 +45,7 @@ struct ContentView: View {
                         Button(device.label) {
                             transport.connect(device)
                         }
+                        .disabled(media.isBusy)
                     }
                 }
 
@@ -76,7 +80,7 @@ struct ContentView: View {
                     Button("Authenticate and open import Wi-Fi") {
                         transport.authenticateAndOpenWiFi(tokenText: pairingToken)
                     }
-                    .disabled(!transport.canAuthenticate)
+                    .disabled(!transport.canAuthenticate || media.isBusy)
                     .buttonStyle(.borderedProminent)
 
                     if transport.canOpenWiFi {
@@ -84,6 +88,7 @@ struct ContentView: View {
                             transport.openImportWiFi()
                         }
                         .buttonStyle(.bordered)
+                        .disabled(media.isBusy)
                     }
 
                     if transport.hasSavedToken {
@@ -134,7 +139,7 @@ struct ContentView: View {
                         } label: {
                             Label(transport.isJoiningWiFi ? "Joining Wi-Fi" : "Join import Wi-Fi", systemImage: "wifi")
                         }
-                        .disabled(!transport.canJoinWiFi)
+                        .disabled(!transport.canJoinWiFi || media.isBusy)
                         .buttonStyle(.bordered)
                     }
 
@@ -148,15 +153,73 @@ struct ContentView: View {
                     TextField("Glasses IP", text: $media.host)
                         .keyboardType(.numbersAndPunctuation)
                         .disableAutocorrection(true)
+                        .disabled(media.isBusy)
 
                     Button("Probe HTTP endpoints") {
                         media.probe()
                     }
                     .buttonStyle(.bordered)
+                    .disabled(media.isBusy)
+
+                    if media.isBusy {
+                        HStack {
+                            ProgressView()
+                            Spacer()
+                            Button("Cancel", role: .cancel) { media.cancel() }
+                        }
+                    }
 
                     Text(media.status)
                     Text(media.lastReport.isEmpty ? "No report" : media.lastReport)
                         .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+
+                Section(header: Text("Glasses photos")) {
+                    ForEach(media.files) { file in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(file.name)
+                                if file.isBundle { Text("LLHDR bundle").font(.caption).foregroundColor(.secondary) }
+                            }
+                            Spacer()
+                            Button {
+                                media.download(file)
+                            } label: {
+                                Image(systemName: "arrow.down.circle")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(media.isBusy)
+                            .accessibilityLabel(file.isBundle ? "Download photo part" : "Download photo")
+                            .help(file.isBundle ? "Download photo part" : "Download photo")
+                        }
+                    }
+                }
+
+                Section(header: Text("Downloaded")) {
+                    ForEach(media.downloads, id: \.self) { url in
+                        HStack {
+                            Button { previewURL = url } label: {
+                                Label(url.lastPathComponent, systemImage: "photo")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                            Spacer()
+                            Button { sharedFile = ImportSharedFile(url: url) } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Share photo")
+                            .help("Share photo")
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) { media.deleteDownload(url) } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
 
                 Section(header: Text("Log")) {
@@ -167,6 +230,8 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("BFA7 Import 15")
+            .quickLookPreview($previewURL)
+            .sheet(item: $sharedFile) { file in ImportShareSheet(url: file.url) }
             .fileImporter(isPresented: $showingCredentialPicker, allowedContentTypes: [.json]) { result in
                 guard case .success(let url) = result else { return }
                 let scoped = url.startAccessingSecurityScopedResource()
@@ -206,7 +271,10 @@ struct ContentView: View {
                     media.host = gateway
                 }
             }
-            .onChange(of: transport.wifiSSID) { _ in showingWiFiPassword = false }
+            .onChange(of: transport.wifiSSID) { _ in
+                showingWiFiPassword = false
+                media.clearRemoteFiles()
+            }
             .onChange(of: transport.wifiPassword) { _ in showingWiFiPassword = false }
             .onChange(of: scenePhase) { phase in
                 if phase != .active { showingWiFiPassword = false }
@@ -214,4 +282,19 @@ struct ContentView: View {
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
+}
+
+private struct ImportSharedFile: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+private struct ImportShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
