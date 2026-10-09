@@ -23,14 +23,17 @@ final class ImportWiFiConnector: ObservableObject {
     var capability: ImportHotspotCapability { manager.capability }
     private let manager: ImportWiFiManaging
     private let delay: UInt64
+    private let timeout: UInt64
     private var task: Task<Void, Never>?
+    private var watchdog: Task<Void, Never>?
     private var generation = UUID()
     private var target: (ssid: String, password: String, host: String)?
     private var deferred = false
 
-    init(manager: ImportWiFiManaging, delay: UInt64 = 750_000_000) {
+    init(manager: ImportWiFiManaging, delay: UInt64 = 750_000_000, timeout: UInt64 = 90_000_000_000) {
         self.manager = manager
         self.delay = delay
+        self.timeout = timeout
     }
 
     func connect(ssid: String, password: String, host: String) {
@@ -49,8 +52,20 @@ final class ImportWiFiConnector: ObservableObject {
         task = Task {
             await run(ssid: ssid, password: password, host: host, id: id)
             guard generation == id else { return }
+            watchdog?.cancel()
+            watchdog = nil
             isJoining = false
             task = nil
+        }
+        watchdog = Task {
+            do { try await Task.sleep(nanoseconds: timeout) } catch { return }
+            guard generation == id, isJoining else { return }
+            generation = UUID()
+            task?.cancel()
+            task = nil
+            watchdog = nil
+            isJoining = false
+            status = "Wi-Fi connection timed out"
         }
     }
 
@@ -61,6 +76,8 @@ final class ImportWiFiConnector: ObservableObject {
 
     func reset() {
         task?.cancel()
+        watchdog?.cancel()
+        watchdog = nil
         task = nil
         generation = UUID()
         target = nil

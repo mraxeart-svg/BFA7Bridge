@@ -107,6 +107,15 @@ enum ImportWiFiTests {
         await Task.yield()
         precondition(changing.isReady && stale.calls.count == 1 && stale.calls[0].0 == "NEW")
         precondition(stale.calls[0].1 == "new-pass")
+        let stalled = TestWiFiManager()
+        stalled.suspendProbe = true
+        let bounded = ImportWiFiConnector(manager: stalled, delay: 0, timeout: 10_000_000)
+        bounded.connect(ssid: "TEST", password: "secret", host: "192.168.43.1")
+        await finish(bounded)
+        precondition(!bounded.isReady && bounded.status == "Wi-Fi connection timed out")
+        stalled.probeContinuation?.resume(returning: true)
+        await Task.yield()
+        precondition(!bounded.isReady && stalled.calls.isEmpty)
         print("Wi-Fi: signing bounds, real app entitlement, password rotation, overlap, fallback, denial, service readiness, foreground and stale callbacks passed")
     }
 
