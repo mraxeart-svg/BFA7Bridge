@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Combine
 import Foundation
+import UIKit
 
 @MainActor
 final class ImportBLETransport: NSObject, ObservableObject {

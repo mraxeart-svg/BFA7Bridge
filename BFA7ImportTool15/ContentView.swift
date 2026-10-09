@@ -53,7 +53,7 @@ struct ContentView: View {
 
                 Section(header: Text("Import session")) {
                     Text(transport.authStatus)
-                    Text("Signed Hotspot permission: \(transport.wifiCapability)")
+                    Text("Signed Hotspot capability: \(transport.wifiCapability)")
                         .font(.caption)
 
                     SecureField(

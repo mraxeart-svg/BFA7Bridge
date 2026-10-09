@@ -46,7 +46,7 @@ jobs:
             -derivedDataPath build-import-tool15 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            clean build
+            clean build 2>&1 | tee "$RUNNER_TEMP/import-build.log"
 
       - name: Preserve declared Hotspot capability for re-signing
         run: |
@@ -59,8 +59,8 @@ jobs:
       - name: Verify Wi-Fi connection state and signed capability
         run: |
           set -euo pipefail
-          xcrun swiftc BFA7ImportTool15/ImportSigningDiagnostics.swift BFA7ImportTool15/ImportWiFiConnector.swift tests/ImportWiFiTests.swift -o "$RUNNER_TEMP/import-wifi-tests"
-          "$RUNNER_TEMP/import-wifi-tests" build-import-tool15/Build/Products/Release-iphoneos/BFA7ImportTool15.app/BFA7ImportTool15
+          xcrun swiftc BFA7ImportTool15/ImportSigningDiagnostics.swift BFA7ImportTool15/ImportWiFiConnector.swift tests/ImportWiFiTests.swift -o "$RUNNER_TEMP/import-wifi-tests" 2>&1 | tee "$RUNNER_TEMP/import-wifi-test.log"
+          "$RUNNER_TEMP/import-wifi-tests" build-import-tool15/Build/Products/Release-iphoneos/BFA7ImportTool15.app/BFA7ImportTool15 2>&1 | tee -a "$RUNNER_TEMP/import-wifi-test.log"
 
       - name: Verify import protocol
         run: |
@@ -88,12 +88,15 @@ jobs:
           done
           "$RUNNER_TEMP/import-media-tests" http://127.0.0.1:48295 "$RUNNER_TEMP/import-fixtures" 2>&1 | tee "$RUNNER_TEMP/import-media-test.log"
 
-      - name: Upload media test diagnostics
+      - name: Upload import test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ImportMediaTestDiagnostics
-          path: ${{ runner.temp }}/import-media-test.log
+          name: ImportTestDiagnostics
+          path: |
+            ${{ runner.temp }}/import-build.log
+            ${{ runner.temp }}/import-wifi-test.log
+            ${{ runner.temp }}/import-media-test.log
           if-no-files-found: ignore
 
       - name: Package IPA for re-signing
