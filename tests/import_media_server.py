@@ -5,6 +5,7 @@ import sys
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 
 def chunk(kind, data):
@@ -19,11 +20,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         status, mime = 200, "application/json"
         if self.path == "/v1/filelists":
-            body = json.dumps([
+            rows = [
                 {"fileName": "IMG_TEST", "url": "filelists/LLHDR_TEST", "mimeType": "image/folder",
                  "size": len(PNG), "fileAdded": 2000},
                 {"fileName": "older.png", "url": "older.png", "size": len(PNG), "fileAdded": 1000}
-            ]).encode()
+            ]
+            video = Path(sys.argv[2]) / "clip.mp4"
+            if video.exists():
+                rows.append({"fileName": "clip.mp4", "url": "clip.mp4", "size": video.stat().st_size,
+                             "mimeType": "video/mp4", "fileAdded": 500})
+            body = json.dumps(rows).encode()
         elif self.path == "/v1/filelists/LLHDR_TEST":
             body = json.dumps([
                 {"filename": "metadata.json", "size": 100},
@@ -39,6 +45,12 @@ class Handler(BaseHTTPRequestHandler):
             body, mime = b'{"error":"not an image"}', "image/png"
         elif self.path == "/v1/files/truncated.png":
             body, mime = PNG[:16], "image/png"
+        elif self.path == "/v1/files/clip.mp4":
+            body, mime = (Path(sys.argv[2]) / "clip.mp4").read_bytes(), "video/mp4"
+        elif self.path == "/v1/files/fake.mp4":
+            body, mime = PNG, "video/mp4"
+        elif self.path == "/v1/files/truncated.mp4":
+            body, mime = (Path(sys.argv[2]) / "clip.mp4").read_bytes()[:16], "video/mp4"
         elif self.path == "/v1/files/redirect.png":
             self.send_response(302)
             self.send_header("Location", "/v1/files/older.png")

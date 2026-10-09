@@ -34,11 +34,13 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.bordered)
+                        .disabled(media.isBusy)
 
                         Button("Disconnect") {
                             transport.disconnect()
                         }
                         .buttonStyle(.bordered)
+                        .disabled(media.isBusy)
                     }
 
                     ForEach(transport.devices) { device in
@@ -97,6 +99,7 @@ struct ContentView: View {
                             pairingToken = ""
                             credentialName = ""
                         }
+                        .disabled(media.isBusy)
                     }
 
                     if !transport.wifiSSID.isEmpty {
@@ -149,7 +152,7 @@ struct ContentView: View {
                         .font(.caption.monospaced())
                 }
 
-                Section(header: Text("Wi-Fi probe")) {
+                Section(header: Text("Media import")) {
                     TextField("Glasses IP", text: $media.host)
                         .keyboardType(.numbersAndPunctuation)
                         .disableAutocorrection(true)
@@ -161,9 +164,16 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .disabled(media.isBusy)
 
+                    Button { media.importAll() } label: {
+                        Label("Import all to Photos", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(media.isBusy)
+
                     if media.isBusy {
                         HStack {
                             ProgressView()
+                            if media.total > 0 { Text("\(media.completed) / \(media.total)") }
                             Spacer()
                             Button("Cancel", role: .cancel) { media.cancel() }
                         }
@@ -175,12 +185,13 @@ struct ContentView: View {
                         .textSelection(.enabled)
                 }
 
-                Section(header: Text("Glasses photos")) {
+                Section(header: Text("Glasses media")) {
                     ForEach(media.files) { file in
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(file.name)
                                 if file.isBundle { Text("LLHDR bundle").font(.caption).foregroundColor(.secondary) }
+                                if file.isVideo { Text("Video").font(.caption).foregroundColor(.secondary) }
                             }
                             Spacer()
                             Button {
@@ -191,8 +202,8 @@ struct ContentView: View {
                             }
                             .buttonStyle(.borderless)
                             .disabled(media.isBusy)
-                            .accessibilityLabel(file.isBundle ? "Download photo part" : "Download photo")
-                            .help(file.isBundle ? "Download photo part" : "Download photo")
+                            .accessibilityLabel(file.isBundle ? "Import photo part to Photos" : "Import to Photos")
+                            .help(file.isBundle ? "Import photo part to Photos" : "Import to Photos")
                         }
                     }
                 }
@@ -201,23 +212,38 @@ struct ContentView: View {
                     ForEach(media.downloads, id: \.self) { url in
                         HStack {
                             Button { previewURL = url } label: {
-                                Label(url.lastPathComponent, systemImage: "photo")
+                                Label(url.lastPathComponent, systemImage: ["mp4", "mov", "m4v"].contains(url.pathExtension) ? "video" : "photo")
                                     .font(.caption)
                             }
                             .buttonStyle(.borderless)
                             Spacer()
+                            if media.isSavedToGallery(url) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .accessibilityLabel("Saved to Photos")
+                            } else {
+                                Button { media.saveToGallery(url) } label: {
+                                    Image(systemName: "photo.on.rectangle.angled")
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(media.isBusy)
+                                .accessibilityLabel("Save to Photos")
+                                .help("Save to Photos")
+                            }
                             Button { sharedFile = ImportSharedFile(url: url) } label: {
                                 Image(systemName: "square.and.arrow.up")
                                     .frame(width: 44, height: 44)
                             }
                             .buttonStyle(.borderless)
-                            .accessibilityLabel("Share photo")
-                            .help("Share photo")
+                            .accessibilityLabel("Share media")
+                            .help("Share media")
                         }
                         .swipeActions {
                             Button(role: .destructive) { media.deleteDownload(url) } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .disabled(media.isBusy)
                         }
                     }
                 }

@@ -15,6 +15,7 @@
 		BB0000000000000000000016 /* MIWBTAESCTR.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000026 /* MIWBTAESCTR.swift */; };
 		BB0000000000000000000017 /* MIWBTProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000028 /* MIWBTProtocol.swift */; };
 		BB0000000000000000000018 /* ImportMediaProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000002A /* ImportMediaProtocol.swift */; };
+		BB0000000000000000000019 /* ImportGalleryWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000002B /* ImportGalleryWriter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		BB0000000000000000000028 /* MIWBTProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIWBTProtocol.swift; sourceTree = "<group>"; };
 		BB0000000000000000000029 /* BFA7ImportTool15.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BFA7ImportTool15.entitlements; sourceTree = "<group>"; };
 		BB000000000000000000002A /* ImportMediaProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportMediaProtocol.swift; sourceTree = "<group>"; };
+		BB000000000000000000002B /* ImportGalleryWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGalleryWriter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +61,7 @@
 				BB0000000000000000000024 /* ImportBLETransport.swift */,
 				BB0000000000000000000025 /* ImportMediaProbe.swift */,
 				BB000000000000000000002A /* ImportMediaProtocol.swift */,
+				BB000000000000000000002B /* ImportGalleryWriter.swift */,
 				BB0000000000000000000026 /* MIWBTAESCTR.swift */,
 				BB0000000000000000000028 /* MIWBTProtocol.swift */,
 				BB0000000000000000000029 /* BFA7ImportTool15.entitlements */,
@@ -143,6 +146,7 @@
 				BB0000000000000000000014 /* ImportBLETransport.swift in Sources */,
 				BB0000000000000000000015 /* ImportMediaProbe.swift in Sources */,
 				BB0000000000000000000018 /* ImportMediaProtocol.swift in Sources */,
+				BB0000000000000000000019 /* ImportGalleryWriter.swift in Sources */,
 				BB0000000000000000000016 /* MIWBTAESCTR.swift in Sources */,
 				BB0000000000000000000017 /* MIWBTProtocol.swift in Sources */,
 			);

@@ -8,6 +8,7 @@ struct ImportMediaEntry: Identifiable, Equatable {
     let isBundle: Bool
 
     var id: String { remoteName }
+    var isVideo: Bool { ["mp4", "mov", "m4v"].contains(URL(fileURLWithPath: remoteName).pathExtension.lowercased()) }
     var isPhoto: Bool {
         ["heic", "heif", "jpg", "jpeg", "png"].contains(
             URL(fileURLWithPath: remoteName).pathExtension.lowercased()
@@ -16,7 +17,7 @@ struct ImportMediaEntry: Identifiable, Equatable {
 }
 
 enum ImportMediaError: LocalizedError {
-    case invalidList, unsafePath, invalidImage, sizeMismatch, emptyBundle
+    case invalidList, unsafePath, invalidImage, invalidVideo, sizeMismatch, emptyBundle
     case http(Int)
 
     var errorDescription: String? {
@@ -24,6 +25,7 @@ enum ImportMediaError: LocalizedError {
         case .invalidList: return "Invalid or oversized file-list JSON"
         case .unsafePath: return "Invalid media path"
         case .invalidImage: return "Response is not a decodable HEIC, JPEG or PNG photo"
+        case .invalidVideo: return "Response is not a playable MP4 or MOV video"
         case .sizeMismatch: return "Downloaded size does not match the manifest"
         case .emptyBundle: return "Bundle contains no supported photos"
         case .http(let code): return "HTTP \(code)"
@@ -51,7 +53,7 @@ enum ImportMediaProtocol {
             let number = dictionary["size"] as? NSNumber
             let size = number.flatMap { value -> Int? in
                 let n = value.doubleValue
-                return n > 0 && n <= 67_108_864 && n.rounded() == n ? Int(n) : nil
+                return n > 0 && n <= 2_147_483_648 && n.rounded() == n ? Int(n) : nil
             }
             let added = (dictionary["fileAdded"] as? NSNumber)?.doubleValue ?? 0
             return ImportMediaEntry(name: name ?? leaf, remoteName: leaf,

@@ -17,7 +17,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
@@ -27,7 +27,7 @@
     <key>NSLocalNetworkUsageDescription</key>
     <string>BFA7 Import Tool probes the temporary glasses Wi-Fi import endpoint on the local network.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Save downloaded glasses photos to your photo library.</string>
+    <string>Automatically save downloaded glasses photos and videos to your photo library.</string>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
