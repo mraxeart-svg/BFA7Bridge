@@ -1,7 +1,6 @@
 import CoreBluetooth
+import Combine
 import Foundation
-import NetworkExtension
-import UIKit
 
 @MainActor
 final class ImportBLETransport: NSObject, ObservableObject {
@@ -16,7 +15,9 @@ final class ImportBLETransport: NSObject, ObservableObject {
     @Published var wifiSSID = ""
     @Published var wifiPassword = ""
     @Published var wifiGateway = "192.168.43.1"
-    @Published private var wifiJoin = ImportWiFiJoinState()
+    private let wifiConnector = ImportWiFiConnector(manager: ImportWiFiManager())
+    private var wifiChanges: AnyCancellable?
+    private var wifiLogChanges: AnyCancellable?
     @Published var hasSavedToken = false
     @Published private(set) var notificationsReady = false
     @Published var log: [String] = []
@@ -45,7 +46,6 @@ final class ImportBLETransport: NSObject, ObservableObject {
     private var appRandom: Data?
     private var sessionKeys: MIWSessionKeys?
     private var importRequestTask: Task<Void, Never>?
-    private var sessionID = UUID()
 
     private let fe95Service = CBUUID(string: "FE95")
     private let writeUUID = CBUUID(string: "005F")
@@ -53,21 +53,29 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        wifiChanges = wifiConnector.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        wifiLogChanges = wifiConnector.$status.dropFirst().sink { [weak self] status in
+            if !status.isEmpty { self?.appendLog(status) }
+        }
+        appendLog("Installed signed Hotspot capability: \(wifiConnector.capability.rawValue)")
         central = CBCentralManager(delegate: self, queue: nil)
     }
 
     var canAuthenticate: Bool {
         connected?.state == .connected && writeCharacteristic != nil && notificationsReady
-            && (stage == .idle || stage == .authenticated) && !wifiJoin.isJoining
+            && (stage == .idle || stage == .authenticated) && !wifiConnector.isJoining
     }
 
     var canOpenWiFi: Bool {
-        stage == .authenticated && !wifiJoin.isJoining
+        stage == .authenticated && !wifiConnector.isJoining
     }
 
     var canJoinWiFi: Bool { canOpenWiFi && !wifiSSID.isEmpty }
-    var isJoiningWiFi: Bool { wifiJoin.isJoining }
-    var wifiJoinStatus: String { wifiJoin.status }
+    var isJoiningWiFi: Bool { wifiConnector.isJoining }
+    var wifiJoinStatus: String { wifiConnector.status }
+    var isImportWiFiReady: Bool { wifiConnector.isReady }
+    var wifiCapability: String { wifiConnector.capability.rawValue }
+    func resumeImportWiFiIfNeeded() { wifiConnector.resume() }
 
     func startScan() {
         guard central.state == .poweredOn else {
@@ -170,7 +178,6 @@ final class ImportBLETransport: NSObject, ObservableObject {
     private func resetSession(keepStatus: Bool) {
         importRequestTask?.cancel()
         importRequestTask = nil
-        sessionID = UUID()
         receiveStream = MIWFrameStream()
         writeQueue.removeAll()
         awaitingWriteResponse = false
@@ -184,7 +191,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
         wifiSSID = ""
         wifiPassword = ""
         wifiGateway = "192.168.43.1"
-        wifiJoin.reset()
+        wifiConnector.reset()
         if !keepStatus { authStatus = "Connect the glasses" }
     }
 
@@ -262,11 +269,10 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     private func requestCurrentWiFiAP() {
         guard sessionKeys != nil else { return }
-        sessionID = UUID()
         wifiSSID = ""
         wifiPassword = ""
         wifiGateway = "192.168.43.1"
-        wifiJoin.reset()
+        wifiConnector.reset()
         stage = .waitingForWiFi
         armTimeout("Wi-Fi AP result", seconds: 30)
         authStatus = "Requesting import Wi-Fi"
@@ -334,40 +340,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     func joinImportWiFi() {
         guard canJoinWiFi else { return }
-        guard UIApplication.shared.applicationState == .active else {
-            appendLog("Wi-Fi join skipped: app is not in foreground")
-            return
-        }
-        guard let requestID = wifiJoin.begin(ssid: wifiSSID) else { return }
-        let configuration: NEHotspotConfiguration
-        if wifiPassword.isEmpty {
-            configuration = NEHotspotConfiguration(ssid: wifiSSID)
-        } else {
-            configuration = NEHotspotConfiguration(
-                ssid: wifiSSID,
-                passphrase: wifiPassword,
-                isWEP: false
-            )
-        }
-        configuration.joinOnce = true
-        let requestSession = sessionID
-        appendLog(wifiJoin.status)
-        NEHotspotConfigurationManager.shared.apply(configuration) { [weak self] error in
-            Task { @MainActor in
-                guard let self, self.sessionID == requestSession else { return }
-                if let error = error as NSError?,
-                   !(error.domain == NEHotspotConfigurationErrorDomain &&
-                     error.code == NEHotspotConfigurationError.alreadyAssociated.rawValue) {
-                    self.wifiJoin.finish(requestID, status:
-                        "Wi-Fi join failed: \(error.domain), code=\(error.code)")
-                } else {
-                    self.wifiJoin.finish(requestID, status: error == nil
-                        ? "Wi-Fi configuration accepted"
-                        : "Wi-Fi already associated")
-                }
-                self.appendLog(self.wifiJoin.status)
-            }
-        }
+        wifiConnector.connect(ssid: wifiSSID, password: wifiPassword, host: wifiGateway)
     }
 
     private func processNotification(_ data: Data) {

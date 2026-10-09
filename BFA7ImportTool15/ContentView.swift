@@ -53,6 +53,8 @@ struct ContentView: View {
 
                 Section(header: Text("Import session")) {
                     Text(transport.authStatus)
+                    Text("Signed Hotspot permission: \(transport.wifiCapability)")
+                        .font(.caption)
 
                     SecureField(
                         transport.hasSavedToken ? "Pairing token saved" : "Pairing token, hex",
@@ -302,8 +304,12 @@ struct ContentView: View {
                 media.clearRemoteFiles()
             }
             .onChange(of: transport.wifiPassword) { _ in showingWiFiPassword = false }
+            .onChange(of: transport.isImportWiFiReady) { ready in
+                if ready && !media.isBusy { media.probe() }
+            }
             .onChange(of: scenePhase) { phase in
                 if phase != .active { showingWiFiPassword = false }
+                else if !media.isBusy { transport.resumeImportWiFiIfNeeded() }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())

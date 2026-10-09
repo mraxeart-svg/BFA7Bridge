@@ -9,25 +9,6 @@ enum ImportProtocolTests {
     }
 
     static func main() throws {
-        var join = ImportWiFiJoinState()
-        precondition(!join.isJoining && join.status.isEmpty)
-        let firstJoin = join.begin(ssid: "Test AP")!
-        precondition(join.isJoining && join.status == "Joining Test AP")
-        precondition(join.begin(ssid: "Another AP") == nil)
-        join.finish(UUID(), status: "Unrelated result")
-        precondition(join.isJoining && join.status == "Joining Test AP")
-        join.finish(firstJoin, status: "Wi-Fi join failed")
-        precondition(!join.isJoining && join.status == "Wi-Fi join failed")
-        let retry = join.begin(ssid: "Test AP")!
-        join.reset()
-        let newSession = join.begin(ssid: "New AP")!
-        join.finish(retry, status: "Stale success")
-        precondition(join.isJoining && join.status == "Joining New AP")
-        join.finish(newSession, status: "Wi-Fi configuration accepted")
-        precondition(!join.isJoining && join.status == "Wi-Fi configuration accepted")
-        join.finish(newSession, status: "Duplicate callback")
-        precondition(join.status == "Wi-Fi configuration accepted")
-
         let record = """
         {"model":"miwear.phovideo.o95cn","name":"Test glasses","detail":{
         "encrypt_key":"000102030405060708090a0b0c0d0e0f","token":"ffffffffffffffffffffffffffffffff"}}
