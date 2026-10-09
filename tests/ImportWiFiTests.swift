@@ -53,7 +53,7 @@ enum ImportWiFiTests {
         await finish(noCapability)
         precondition(!noCapability.isReady && missing.calls.isEmpty && noCapability.status.contains("missing"))
         missing.responses = [true]
-        noCapability.connect(ssid: "TEST", password: "secret", host: "192.168.43.1")
+        noCapability.resume()
         await finish(noCapability)
         precondition(noCapability.isReady && missing.calls.isEmpty)
 
@@ -72,7 +72,9 @@ enum ImportWiFiTests {
             let request = ImportWiFiConnector(manager: rejected, delay: 0)
             request.connect(ssid: "TEST", password: "secret", host: "192.168.43.1")
             await finish(request)
+            rejected.responses = [false]
             request.resume()
+            await finish(request)
             precondition(!request.isReady && rejected.calls.count == 1 && rejected.removed.isEmpty)
             precondition(!request.status.contains("secret"))
         }

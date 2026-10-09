@@ -37,20 +37,25 @@ final class ImportWiFiConnector: ObservableObject {
     }
 
     func connect(ssid: String, password: String, host: String) {
+        start(ssid: ssid, password: password, host: host, allowApply: true)
+    }
+
+    private func start(ssid: String, password: String, host: String, allowApply: Bool) {
         guard !isJoining else { return }
         target = (ssid, password, host)
         isReady = false
         guard manager.isForeground else {
-            deferred = true
-            status = "Wi-Fi join waiting for foreground"
+            deferred = allowApply
+            if allowApply { status = "Wi-Fi join waiting for foreground" }
             return
         }
+        let previousStatus = status
         deferred = false
         isJoining = true
         generation = UUID()
         let id = generation
         task = Task {
-            await run(ssid: ssid, password: password, host: host, id: id)
+            await run(ssid: ssid, password: password, host: host, id: id, allowApply: allowApply, previousStatus: previousStatus)
             guard generation == id else { return }
             watchdog?.cancel()
             watchdog = nil
@@ -70,8 +75,8 @@ final class ImportWiFiConnector: ObservableObject {
     }
 
     func resume() {
-        guard deferred || isReady, let target else { return }
-        connect(ssid: target.ssid, password: target.password, host: target.host)
+        guard let target else { return }
+        start(ssid: target.ssid, password: target.password, host: target.host, allowApply: deferred || isReady)
     }
 
     func reset() {
@@ -89,7 +94,7 @@ final class ImportWiFiConnector: ObservableObject {
 
     private func current(_ id: UUID) -> Bool { generation == id && !Task.isCancelled }
 
-    private func run(ssid: String, password: String, host: String, id: UUID) async {
+    private func run(ssid: String, password: String, host: String, id: UUID, allowApply: Bool, previousStatus: String) async {
         status = "Checking current import network"
         // A manually joined network remains useful even if signing stripped the capability.
         if await manager.importServiceAvailable(host: host), current(id) {
@@ -98,6 +103,10 @@ final class ImportWiFiConnector: ObservableObject {
             return
         }
         guard current(id) else { return }
+        guard allowApply else {
+            status = previousStatus
+            return
+        }
         guard capability != .missing else {
             status = "Auto-join unavailable: Hotspot permission missing in installed signature"
             return
