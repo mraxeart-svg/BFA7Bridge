@@ -19,7 +19,10 @@ private final class TestGallery: ImportGalleryWriting {
 enum ImportMediaTransferTests {
     @MainActor
     static func main() async throws {
+        setbuf(stdout, nil)
+        print("TEST: generate MP4")
         try await makeVideo(at: URL(fileURLWithPath: CommandLine.arguments[2]).appendingPathComponent("clip.mp4"))
+        print("TEST: parser and image transfer")
         let base = try ImportMediaProtocol.baseURL(host: "192.168.43.1")
         precondition(base.absoluteString == "http://192.168.43.1:8080")
         let encoded = try ImportMediaProtocol.endpoint(base: base, list: false, name: "part one.heic")
@@ -87,6 +90,7 @@ enum ImportMediaTransferTests {
         precondition(media.downloads.isEmpty)
 
         let galleryFolder = folder.appendingPathComponent("gallery")
+        print("TEST: gallery denial and retry")
         let gallery = TestGallery()
         let importer = ImportMediaProbe(directory: galleryFolder, gallery: gallery)
         importer.host = CommandLine.arguments[1]
@@ -100,20 +104,24 @@ enum ImportMediaTransferTests {
         precondition(importer.status == "Saved to Photos" && importer.downloads.count == 1 && gallery.calls == 2)
         precondition(importer.isSavedToGallery(importer.downloads[0]))
         let resumed = ImportMediaProbe(directory: galleryFolder, gallery: gallery)
+        print("TEST: persisted gallery record and video batch")
         resumed.host = CommandLine.arguments[1]
         await resumed.downloadPhoto(importer.files[0])
         precondition(resumed.status == "Already imported" && gallery.calls == 2)
         await resumed.downloadAll(importer.files)
+        print("Batch: \(resumed.status); \(resumed.lastReport); gallery=\(gallery.calls) videos=\(gallery.videos)")
         precondition(resumed.completed == 3 && resumed.total == 3 && resumed.downloads.count == 3)
         precondition(gallery.calls == 4 && gallery.videos == 1 && resumed.status.contains("2 saved, 1 skipped, 0 failed"))
         for url in resumed.downloads { precondition(resumed.isSavedToGallery(url)) }
         await resumed.downloadAll(importer.files)
         precondition(gallery.calls == 4 && resumed.status.contains("0 saved, 3 skipped, 0 failed"))
         for name in ["fake.mp4", "truncated.mp4"] {
+            print("TEST: reject \(name)")
             await resumed.downloadPhoto(ImportMediaEntry(name: name, remoteName: name, size: nil, added: 0, isBundle: false))
             precondition(resumed.status == "Transfer failed" && resumed.downloads.count == 3 && gallery.calls == 4)
         }
         let missing = ImportMediaEntry(name: "missing.png", remoteName: "missing.png", size: nil, added: 0, isBundle: false)
+        print("TEST: partial failure and cancellation")
         await resumed.downloadAll([missing] + importer.files)
         precondition(resumed.completed == 4 && resumed.status.contains("0 saved, 3 skipped, 1 failed"))
         precondition(gallery.calls == 4)

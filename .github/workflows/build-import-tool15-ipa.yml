@@ -72,7 +72,15 @@ jobs:
             fi
             sleep 0.1
           done
-          "$RUNNER_TEMP/import-media-tests" http://127.0.0.1:48295 "$RUNNER_TEMP/import-fixtures"
+          "$RUNNER_TEMP/import-media-tests" http://127.0.0.1:48295 "$RUNNER_TEMP/import-fixtures" 2>&1 | tee "$RUNNER_TEMP/import-media-test.log"
+
+      - name: Upload media test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImportMediaTestDiagnostics
+          path: ${{ runner.temp }}/import-media-test.log
+          if-no-files-found: ignore
 
       - name: Package unsigned IPA
         run: |
