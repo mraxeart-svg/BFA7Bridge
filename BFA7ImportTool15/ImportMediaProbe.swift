@@ -227,7 +227,15 @@ final class ImportMediaProbe: ObservableObject {
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     throw ImportMediaError.http((response as? HTTPURLResponse)?.statusCode ?? -1)
                 }
-                let size = try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber
+                var source = temporary
+                if candidate.isVideo {
+                    // AVFoundation opens media asynchronously: own the file and preserve its container extension.
+                    let ext = URL(fileURLWithPath: candidate.remoteName).pathExtension.lowercased()
+                    source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).\(ext)")
+                    try FileManager.default.moveItem(at: temporary, to: source)
+                }
+                defer { if source != temporary { try? FileManager.default.removeItem(at: source) } }
+                let size = try FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber
                 guard let bytes = size?.intValue, bytes > 0,
                       bytes <= (candidate.isVideo ? 2_147_483_648 : 67_108_864) else {
                     throw candidate.isVideo ? ImportMediaError.invalidVideo : ImportMediaError.invalidImage
@@ -235,15 +243,15 @@ final class ImportMediaProbe: ObservableObject {
                 if let expected = candidate.size, expected != bytes { throw ImportMediaError.sizeMismatch }
                 let ext: String
                 if candidate.isVideo {
-                    ext = try await Self.validatedVideoExtension(at: temporary, filename: candidate.remoteName)
+                    ext = try await Self.validatedVideoExtension(at: source, filename: candidate.remoteName)
                 } else {
-                    ext = try Self.validatedPhotoExtension(at: temporary)
+                    ext = try Self.validatedPhotoExtension(at: source)
                 }
                 try Task.checkCancellation()
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 let name = URL(fileURLWithPath: candidate.remoteName).deletingPathExtension().lastPathComponent
                 let destination = directory.appendingPathComponent("\(UUID().uuidString)-\(name).\(ext)")
-                try FileManager.default.moveItem(at: temporary, to: destination)
+                try FileManager.default.moveItem(at: source, to: destination)
                 let date = entry.added > 0 && entry.added.isFinite && entry.added < 4_102_444_800_000
                     ? Date(timeIntervalSince1970: entry.added / 1000) : nil
                 records[key] = ImportTransferRecord(filename: destination.lastPathComponent, date: date, gallerySaved: false)

@@ -22,6 +22,9 @@ enum ImportMediaTransferTests {
         setbuf(stdout, nil)
         print("TEST: generate MP4")
         try await makeVideo(at: URL(fileURLWithPath: CommandLine.arguments[2]).appendingPathComponent("clip.mp4"))
+        let videoExtension = try await ImportMediaProbe.validatedVideoExtension(
+            at: URL(fileURLWithPath: CommandLine.arguments[2]).appendingPathComponent("clip.mp4"), filename: "clip.mp4")
+        precondition(videoExtension == "mp4")
         print("TEST: parser and image transfer")
         let base = try ImportMediaProtocol.baseURL(host: "192.168.43.1")
         precondition(base.absoluteString == "http://192.168.43.1:8080")
