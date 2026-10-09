@@ -9,6 +9,25 @@ enum ImportProtocolTests {
     }
 
     static func main() throws {
+        var join = ImportWiFiJoinState()
+        precondition(!join.isJoining && join.status.isEmpty)
+        let firstJoin = join.begin(ssid: "Test AP")!
+        precondition(join.isJoining && join.status == "Joining Test AP")
+        precondition(join.begin(ssid: "Another AP") == nil)
+        join.finish(UUID(), status: "Unrelated result")
+        precondition(join.isJoining && join.status == "Joining Test AP")
+        join.finish(firstJoin, status: "Wi-Fi join failed")
+        precondition(!join.isJoining && join.status == "Wi-Fi join failed")
+        let retry = join.begin(ssid: "Test AP")!
+        join.reset()
+        let newSession = join.begin(ssid: "New AP")!
+        join.finish(retry, status: "Stale success")
+        precondition(join.isJoining && join.status == "Joining New AP")
+        join.finish(newSession, status: "Wi-Fi configuration accepted")
+        precondition(!join.isJoining && join.status == "Wi-Fi configuration accepted")
+        join.finish(newSession, status: "Duplicate callback")
+        precondition(join.status == "Wi-Fi configuration accepted")
+
         let record = """
         {"model":"miwear.phovideo.o95cn","name":"Test glasses","detail":{
         "encrypt_key":"000102030405060708090a0b0c0d0e0f","token":"ffffffffffffffffffffffffffffffff"}}
@@ -91,6 +110,14 @@ enum ImportProtocolTests {
         precondition(credentials?.ssid == "Xiaomi AI Glasses TEST1")
         precondition(credentials?.password == "testPASS1234")
         precondition(credentials?.gateway == "192.168.43.1")
+        let rotatedWiFi = field(0x0a, Data("Xiaomi AI Glasses TEST1".utf8))
+            + field(0x12, Data("differentPASS5678".utf8))
+            + field(0x1a, Data("192.168.43.1".utf8))
+        let rotatedResult = hex("08 00") + field(0x12, rotatedWiFi)
+        let rotatedSystem = hex("C2 03") + Data([UInt8(rotatedResult.count)]) + rotatedResult
+        let rotatedPacket = hex("08 02 10 58") + field(0x22, rotatedSystem)
+        precondition(MIWProtocol.parseWiFiCredentials(rotatedPacket)?.password == "differentPASS5678")
+        precondition(MIWProtocol.parseWiFiCredentials(rotatedPacket)?.password != credentials?.password)
         var wrongID = packet
         wrongID[3] = 89
         precondition(MIWProtocol.parseWiFiCredentials(wrongID) == nil)

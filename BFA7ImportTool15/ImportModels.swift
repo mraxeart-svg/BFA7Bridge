@@ -1,5 +1,30 @@
 import Foundation
 
+struct ImportWiFiJoinState {
+    private(set) var status = ""
+    private var requestID: UUID?
+
+    var isJoining: Bool { requestID != nil }
+
+    mutating func begin(ssid: String) -> UUID? {
+        guard requestID == nil else { return nil }
+        let id = UUID()
+        requestID = id
+        status = "Joining \(ssid)"
+        return id
+    }
+
+    mutating func finish(_ id: UUID, status: String) {
+        guard requestID == id else { return }
+        requestID = nil
+        self.status = status
+    }
+
+    mutating func reset() {
+        self = Self()
+    }
+}
+
 struct ImportDevice: Identifiable, Equatable {
     let id: UUID
     let name: String

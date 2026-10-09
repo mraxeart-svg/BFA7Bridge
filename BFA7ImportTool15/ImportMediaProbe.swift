@@ -34,8 +34,9 @@ final class ImportMediaProbe: ObservableObject {
         var lines: [String] = []
         var receivedHTTPResponse = false
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2
-        config.timeoutIntervalForResource = 3
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 5
+        config.timeoutIntervalForResource = 10
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
 
@@ -55,7 +56,8 @@ final class ImportMediaProbe: ObservableObject {
                 }
                 lines.append("GET \(url.absoluteString) -> \(code), \(data.count) B, \(preview)")
             } catch {
-                lines.append("GET \(path) -> \(error.localizedDescription)")
+                let networkError = error as NSError
+                lines.append("GET \(path) -> \(networkError.domain), code=\(networkError.code): \(networkError.localizedDescription)")
             }
         }
 

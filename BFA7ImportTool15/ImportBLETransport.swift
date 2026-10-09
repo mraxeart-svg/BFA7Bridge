@@ -16,6 +16,7 @@ final class ImportBLETransport: NSObject, ObservableObject {
     @Published var wifiSSID = ""
     @Published var wifiPassword = ""
     @Published var wifiGateway = "192.168.43.1"
+    @Published private var wifiJoin = ImportWiFiJoinState()
     @Published var hasSavedToken = false
     @Published private(set) var notificationsReady = false
     @Published var log: [String] = []
@@ -57,12 +58,16 @@ final class ImportBLETransport: NSObject, ObservableObject {
 
     var canAuthenticate: Bool {
         connected?.state == .connected && writeCharacteristic != nil && notificationsReady
-            && (stage == .idle || stage == .authenticated)
+            && (stage == .idle || stage == .authenticated) && !wifiJoin.isJoining
     }
 
     var canOpenWiFi: Bool {
-        stage == .authenticated
+        stage == .authenticated && !wifiJoin.isJoining
     }
+
+    var canJoinWiFi: Bool { canOpenWiFi && !wifiSSID.isEmpty }
+    var isJoiningWiFi: Bool { wifiJoin.isJoining }
+    var wifiJoinStatus: String { wifiJoin.status }
 
     func startScan() {
         guard central.state == .poweredOn else {
@@ -178,6 +183,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
         hasSavedToken = connected.map { MIWTokenVault.load(for: $0.identifier) != nil } ?? false
         wifiSSID = ""
         wifiPassword = ""
+        wifiGateway = "192.168.43.1"
+        wifiJoin.reset()
         if !keepStatus { authStatus = "Connect the glasses" }
     }
 
@@ -258,6 +265,8 @@ final class ImportBLETransport: NSObject, ObservableObject {
         sessionID = UUID()
         wifiSSID = ""
         wifiPassword = ""
+        wifiGateway = "192.168.43.1"
+        wifiJoin.reset()
         stage = .waitingForWiFi
         armTimeout("Wi-Fi AP result", seconds: 30)
         authStatus = "Requesting import Wi-Fi"
@@ -318,37 +327,45 @@ final class ImportBLETransport: NSObject, ObservableObject {
         wifiSSID = credentials.ssid
         wifiPassword = credentials.password
         wifiGateway = credentials.gateway.isEmpty ? "192.168.43.1" : credentials.gateway
-        authStatus = "Wi-Fi credentials received"
+        authStatus = "Authenticated; Wi-Fi credentials received"
         appendLog("AP credentials: SSID=\(credentials.ssid), gateway=\(wifiGateway)")
-        joinWiFi(credentials)
+        joinImportWiFi()
     }
 
-    private func joinWiFi(_ credentials: MIWWiFiCredentials) {
+    func joinImportWiFi() {
+        guard canJoinWiFi else { return }
+        guard UIApplication.shared.applicationState == .active else {
+            appendLog("Wi-Fi join skipped: app is not in foreground")
+            return
+        }
+        guard let requestID = wifiJoin.begin(ssid: wifiSSID) else { return }
         let configuration: NEHotspotConfiguration
-        if credentials.password.isEmpty {
-            configuration = NEHotspotConfiguration(ssid: credentials.ssid)
+        if wifiPassword.isEmpty {
+            configuration = NEHotspotConfiguration(ssid: wifiSSID)
         } else {
             configuration = NEHotspotConfiguration(
-                ssid: credentials.ssid,
-                passphrase: credentials.password,
+                ssid: wifiSSID,
+                passphrase: wifiPassword,
                 isWEP: false
             )
         }
         configuration.joinOnce = true
         let requestSession = sessionID
-        authStatus = "Joining \(credentials.ssid)"
+        appendLog(wifiJoin.status)
         NEHotspotConfigurationManager.shared.apply(configuration) { [weak self] error in
             Task { @MainActor in
                 guard let self, self.sessionID == requestSession else { return }
                 if let error = error as NSError?,
                    !(error.domain == NEHotspotConfigurationErrorDomain &&
                      error.code == NEHotspotConfigurationError.alreadyAssociated.rawValue) {
-                    self.authStatus = "Wi-Fi join failed: \(error.localizedDescription)"
-                    self.appendLog(self.authStatus)
+                    self.wifiJoin.finish(requestID, status:
+                        "Wi-Fi join failed: \(error.domain), code=\(error.code)")
                 } else {
-                    self.authStatus = "Connected to import Wi-Fi"
-                    self.appendLog("iOS accepted the hotspot configuration")
+                    self.wifiJoin.finish(requestID, status: error == nil
+                        ? "Wi-Fi configuration accepted"
+                        : "Wi-Fi already associated")
                 }
+                self.appendLog(self.wifiJoin.status)
             }
         }
     }

@@ -1,15 +1,18 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var transport: ImportBLETransport
     @EnvironmentObject private var media: ImportMediaProbe
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pairingToken = ""
     @State private var showingCredentialPicker = false
     @State private var credentialName = ""
     @State private var credentialError = false
     @State private var loadingBTCoreCandidate = false
     @State private var credentialErrorMessage = ""
+    @State private var showingWiFiPassword = false
 
     var body: some View {
         NavigationView {
@@ -94,6 +97,45 @@ struct ContentView: View {
                     if !transport.wifiSSID.isEmpty {
                         Text("SSID: \(transport.wifiSSID)")
                         Text("Gateway: \(transport.wifiGateway)")
+                        if transport.wifiPassword.isEmpty {
+                            Text("Password: none")
+                        } else {
+                            HStack {
+                                Text(showingWiFiPassword ? transport.wifiPassword : "Password: hidden")
+                                    .font(.body.monospaced())
+                                    .textSelection(.enabled)
+                                Spacer()
+                                Button {
+                                    showingWiFiPassword.toggle()
+                                } label: {
+                                    Image(systemName: showingWiFiPassword ? "eye.slash" : "eye")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(showingWiFiPassword ? "Hide password" : "Show password")
+                                .help(showingWiFiPassword ? "Hide password" : "Show password")
+                                Button {
+                                    UIPasteboard.general.setItems(
+                                        [[UTType.utf8PlainText.identifier: transport.wifiPassword]],
+                                        options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)]
+                                    )
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Copy password")
+                                .help("Copy password")
+                            }
+                        }
+                        if !transport.wifiJoinStatus.isEmpty {
+                            Text(transport.wifiJoinStatus)
+                        }
+                        Button {
+                            transport.joinImportWiFi()
+                        } label: {
+                            Label(transport.isJoiningWiFi ? "Joining Wi-Fi" : "Join import Wi-Fi", systemImage: "wifi")
+                        }
+                        .disabled(!transport.canJoinWiFi)
+                        .buttonStyle(.bordered)
                     }
 
                     Text("Last write: \(transport.lastWrite)")
@@ -163,6 +205,11 @@ struct ContentView: View {
                 if !gateway.isEmpty {
                     media.host = gateway
                 }
+            }
+            .onChange(of: transport.wifiSSID) { _ in showingWiFiPassword = false }
+            .onChange(of: transport.wifiPassword) { _ in showingWiFiPassword = false }
+            .onChange(of: scenePhase) { phase in
+                if phase != .active { showingWiFiPassword = false }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
