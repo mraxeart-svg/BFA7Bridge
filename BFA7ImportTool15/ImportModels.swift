@@ -60,6 +60,60 @@ struct MIWPairingRecord {
     }
 }
 
+struct MIWBTCoreTokenCandidate {
+    let key: Data
+
+    enum CandidateError: LocalizedError {
+        case invalid
+        var errorDescription: String? {
+            "Expected one unverified O95 refreshBTCoreToken candidate file"
+        }
+    }
+
+    private struct Export: Decodable {
+        let schema: String
+        let source: String
+        let validated: Bool
+        let authentication_verified: Bool
+        let candidates: [Candidate]
+    }
+
+    private struct Candidate: Decodable {
+        let model: String
+        let source: String
+        let identity_source: String
+        let refreshBTCoreToken: String
+    }
+
+    static func decode(_ data: Data) throws -> MIWBTCoreTokenCandidate {
+        guard data.count <= 1_048_576,
+              let export = try? JSONDecoder().decode(Export.self, from: data),
+              export.schema == "bfa7-ios-btcore-token-candidates-v1",
+              export.source == "HCWDeviceList.refreshBTCoreToken",
+              !export.validated, !export.authentication_verified,
+              export.candidates.count == 1, let candidate = export.candidates.first,
+              candidate.model == "miwear.phovideo.o95cn" else { throw CandidateError.invalid }
+
+        let prefix = "HCWDeviceList["
+        let suffix = "].refreshBTCoreToken"
+        guard candidate.source.hasPrefix(prefix), candidate.source.hasSuffix(suffix) else {
+            throw CandidateError.invalid
+        }
+        let index = String(candidate.source.dropFirst(prefix.count).dropLast(suffix.count))
+        guard !index.isEmpty, index.utf8.allSatisfy({ (48...57).contains($0) }),
+              let number = Int(index), (0..<50_000).contains(number), String(number) == index,
+              candidate.identity_source == "HCWDeviceList[\(index)].miwBTPeripheral",
+              candidate.refreshBTCoreToken.utf8.count == 32,
+              candidate.refreshBTCoreToken.utf8.allSatisfy({
+                  (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
+              }),
+              let key = Data(importHexString: candidate.refreshBTCoreToken), key.count == 16 else {
+            throw CandidateError.invalid
+        }
+        return MIWBTCoreTokenCandidate(key: key)
+    }
+}
+
 extension Data {
     init?(importHexString: String) {
         let hexadecimal = CharacterSet(charactersIn: "0123456789abcdefABCDEF")

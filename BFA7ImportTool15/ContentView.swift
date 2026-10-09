@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var showingCredentialPicker = false
     @State private var credentialName = ""
     @State private var credentialError = false
+    @State private var loadingBTCoreCandidate = false
+    @State private var credentialErrorMessage = ""
 
     var body: some View {
         NavigationView {
@@ -55,9 +57,16 @@ struct ContentView: View {
                         .disableAutocorrection(true)
 
                     Button {
+                        loadingBTCoreCandidate = false
                         showingCredentialPicker = true
                     } label: {
                         Label("Load device record", systemImage: "doc.badge.plus")
+                    }
+                    Button {
+                        loadingBTCoreCandidate = true
+                        showingCredentialPicker = true
+                    } label: {
+                        Label("Load BTCore token", systemImage: "key")
                     }
                     if !credentialName.isEmpty { Text("Credential: \(credentialName)") }
 
@@ -124,17 +133,26 @@ struct ContentView: View {
                     let file = try FileHandle(forReadingFrom: url)
                     defer { try? file.close() }
                     let data = try file.read(upToCount: 1_048_577) ?? Data()
-                    let record = try MIWPairingRecord.decode(data)
-                    pairingToken = record.key.importHexString
-                    credentialName = record.name
+                    if loadingBTCoreCandidate {
+                        let candidate = try MIWBTCoreTokenCandidate.decode(data)
+                        pairingToken = candidate.key.importHexString
+                        credentialName = "BTCore token (unverified)"
+                    } else {
+                        let record = try MIWPairingRecord.decode(data)
+                        pairingToken = record.key.importHexString
+                        credentialName = record.name
+                    }
                 } catch {
+                    credentialErrorMessage = loadingBTCoreCandidate
+                        ? MIWBTCoreTokenCandidate.CandidateError.invalid.localizedDescription
+                        : MIWPairingRecord.RecordError.invalid.localizedDescription
                     credentialError = true
                 }
             }
             .alert("Credential not loaded", isPresented: $credentialError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(MIWPairingRecord.RecordError.invalid.localizedDescription)
+                Text(credentialErrorMessage)
             }
             .onAppear {
                 if !transport.isScanning {

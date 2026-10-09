@@ -30,6 +30,46 @@ enum ImportProtocolTests {
                 fatalError("Invalid or ambiguous device record accepted")
             } catch MIWPairingRecord.RecordError.invalid {}
         }
+        let btcoreEntry = """
+        {"model":"miwear.phovideo.o95cn","source":"HCWDeviceList[0].refreshBTCoreToken",
+        "identity_source":"HCWDeviceList[0].miwBTPeripheral",
+        "refreshBTCoreToken":"000102030405060708090a0b0c0d0e0f"}
+        """
+        let btcoreExport = """
+        {"schema":"bfa7-ios-btcore-token-candidates-v1","validated":false,
+        "authentication_verified":false,"source":"HCWDeviceList.refreshBTCoreToken",
+        "candidates":[\(btcoreEntry)]}
+        """
+        let btcore = try MIWBTCoreTokenCandidate.decode(Data(btcoreExport.utf8))
+        precondition(btcore.key == Data(0..<16))
+        do {
+            _ = try MIWPairingRecord.decode(Data(btcoreExport.utf8))
+            fatalError("BTCore candidate accepted as legacy encrypt_key record")
+        } catch MIWPairingRecord.RecordError.invalid {}
+        for invalid in [
+            record, btcoreEntry, "[]", "null",
+            btcoreExport.replacingOccurrences(of: "\"validated\":false", with: "\"validated\":true"),
+            btcoreExport.replacingOccurrences(of: "\"authentication_verified\":false", with: "\"authentication_verified\":true"),
+            btcoreExport.replacingOccurrences(of: "bfa7-ios-btcore-token-candidates-v1", with: "unknown"),
+            btcoreExport.replacingOccurrences(of: "o95cn", with: "band"),
+            btcoreExport.replacingOccurrences(of: "[0].miwBTPeripheral", with: "[1].miwBTPeripheral"),
+            btcoreExport.replacingOccurrences(of: "HCWDeviceList[0]", with: "HCWDeviceList[00]"),
+            btcoreExport.replacingOccurrences(of: "HCWDeviceList[0]", with: "HCWDeviceList[-1]"),
+            btcoreExport.replacingOccurrences(of: "refreshBTCoreToken\":", with: "tokenKey\":"),
+            btcoreExport.replacingOccurrences(of: "000102030405060708090a0b0c0d0e0f", with: "000102030405060708090a0b0c0d0e0g"),
+            btcoreExport.replacingOccurrences(of: "000102030405060708090a0b0c0d0e0f", with: "00 0102030405060708090a0b0c0d0e0f"),
+            btcoreExport.replacingOccurrences(of: "[\(btcoreEntry)]", with: "[]"),
+            btcoreExport.replacingOccurrences(of: "[\(btcoreEntry)]", with: "[\(btcoreEntry),\(btcoreEntry)]")
+        ] {
+            do {
+                _ = try MIWBTCoreTokenCandidate.decode(Data(invalid.utf8))
+                fatalError("Invalid or ambiguous BTCore token candidate accepted")
+            } catch MIWBTCoreTokenCandidate.CandidateError.invalid {}
+        }
+        do {
+            _ = try MIWBTCoreTokenCandidate.decode(Data(repeating: 32, count: 1_048_577))
+            fatalError("Oversized BTCore export accepted")
+        } catch MIWBTCoreTokenCandidate.CandidateError.invalid {}
         precondition(MIWProtocol.iOSWiFiAPRequest() == hex("08 02 10 58"))
         precondition(MIWProtocol.buildAppVerify(appRandom: Data(0..<16)) ==
                      hex("08 01 10 1A 1A 15 F2 01 12 0A 10") + Data(0..<16))
